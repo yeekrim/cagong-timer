@@ -15,7 +15,7 @@ struct FriendsSection: View {
     @FocusState private var codeFocused: Bool
 
     private enum Status: Equatable {
-        case idle, searching, notFound, added(String)
+        case idle, searching, sent, notFound, alreadyFriend
     }
 
     var body: some View {
@@ -23,6 +23,7 @@ struct FriendsSection: View {
             if SupabaseConfig.isConfigured {
                 meCard
                 addCard
+                requestList
                 friendList
             } else {
                 notConfigured
@@ -130,18 +131,64 @@ struct FriendsSection: View {
         case .idle:
             EmptyView()
         case .searching:
-            Text("찾는 중…")
+            Text("보내는 중…")
                 .font(Typo.body(11.5))
                 .foregroundStyle(theme.p.inkSoft)
+        case .sent:
+            Text("요청을 보냈어요. 상대가 수락하면 친구가 돼요.")
+                .font(Typo.body(11.5))
+                .foregroundStyle(theme.p.accent)
         case .notFound:
             Text("그런 코드를 쓰는 사람이 없어요.")
                 .font(Typo.body(11.5))
                 .foregroundStyle(theme.p.brass)
-        case .added(let name):
-            Text("\(name) 님을 추가했어요.")
+        case .alreadyFriend:
+            Text("이미 친구예요.")
                 .font(Typo.body(11.5))
-                .foregroundStyle(theme.p.accent)
+                .foregroundStyle(theme.p.inkSoft)
         }
+    }
+
+    // MARK: 받은 요청
+
+    @ViewBuilder
+    private var requestList: some View {
+        if !friendSync.incoming.isEmpty {
+            VStack(alignment: .leading, spacing: 0) {
+                sectionHeader("받은 요청 \(friendSync.incoming.count)개",
+                              note: "수락하면 서로 친구가 돼요")
+
+                VStack(spacing: 8) {
+                    ForEach(friendSync.incoming) { person in
+                        requestRow(person)
+                    }
+                }
+            }
+        }
+    }
+
+    private func requestRow(_ person: Friend) -> some View {
+        HStack(spacing: 12) {
+            avatar(person.name)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(person.name.isEmpty ? "이름 없음" : person.name)
+                    .font(Typo.bodyStrong(13.5))
+                    .foregroundStyle(theme.p.ink)
+                Text("친구 요청")
+                    .font(Typo.body(11))
+                    .foregroundStyle(theme.p.accentSoft)
+            }
+
+            Spacer()
+
+            Button("수락") {
+                Task { await friendSync.accept(person) }
+            }
+            .buttonStyle(PrimaryButtonStyle(theme: theme))
+        }
+        .padding(10)
+        .background(cardBackground)
     }
 
     // MARK: 친구 목록
@@ -163,14 +210,7 @@ struct FriendsSection: View {
 
     private func friendRow(_ friend: Friend) -> some View {
         HStack(spacing: 12) {
-            Circle()
-                .fill(theme.p.accent.opacity(0.15))
-                .frame(width: 32, height: 32)
-                .overlay(
-                    Text(String(friend.name.prefix(1)))
-                        .font(Typo.bodyStrong(14))
-                        .foregroundStyle(theme.p.accent)
-                )
+            avatar(friend.name)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(friend.name.isEmpty ? "이름 없음" : friend.name)
@@ -185,7 +225,7 @@ struct FriendsSection: View {
             Spacer()
 
             Button {
-                withAnimation(Motion.button) { store.removeFriend(friend.id) }
+                Task { await friendSync.remove(friend) }
             } label: {
                 Image(systemName: "xmark")
                     .font(.system(size: 10, weight: .bold))
@@ -193,10 +233,21 @@ struct FriendsSection: View {
                     .frame(width: 26, height: 26)
             }
             .buttonStyle(PressableStyle())
-            .help("친구 삭제")
+            .help("친구 삭제 — 서로에게서 사라져요")
         }
         .padding(10)
         .background(cardBackground)
+    }
+
+    private func avatar(_ name: String) -> some View {
+        Circle()
+            .fill(theme.p.accent.opacity(0.15))
+            .frame(width: 32, height: 32)
+            .overlay(
+                Text(name.isEmpty ? "?" : String(name.prefix(1)))
+                    .font(Typo.bodyStrong(14))
+                    .foregroundStyle(theme.p.accent)
+            )
     }
 
     // MARK: 설정 전
@@ -239,11 +290,14 @@ struct FriendsSection: View {
         codeFocused = false
 
         Task {
-            if let friend = await friendSync.lookup(code: code) {
-                store.addFriend(friend)
-                status = .added(friend.name.isEmpty ? "이름 없음" : friend.name)
+            switch await friendSync.request(code: code) {
+            case .sent:
+                status = .sent
                 codeDraft = ""
-            } else {
+            case .alreadyFriend:
+                status = .alreadyFriend
+                codeDraft = ""
+            case .notFound, .offline:
                 status = .notFound
             }
         }

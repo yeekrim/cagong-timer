@@ -402,6 +402,16 @@ final class StudyStore: ObservableObject {
         save()
     }
 
+    /// 서버가 준 수락된 친구 목록으로 로컬 캐시를 통째로 맞춘다.
+    /// 바뀐 게 없으면 아무것도 안 한다 — 8초마다 공짜 저장·리렌더를 하지 않으려고.
+    func syncFriends(_ list: [Friend]) {
+        let sorted = list.sorted { $0.id.uuidString < $1.id.uuidString }
+        let current = data.friends.sorted { $0.id.uuidString < $1.id.uuidString }
+        guard sorted != current else { return }
+        data.friends = list
+        save()
+    }
+
     func friend(_ id: UUID) -> Friend? { data.friends.first { $0.id == id } }
 
     // MARK: - 조회

@@ -11,12 +11,19 @@ import Combine
 @MainActor
 final class FriendSync: ObservableObject {
 
+    /// 나에게 온, 아직 수락 안 한 친구 요청들. UI가 여기 보고 "수락" 버튼을 띄운다.
+    /// 서버가 진실이라 저장하지 않는다 — 폴링할 때마다 다시 채운다.
+    @Published private(set) var incoming: [Friend] = []
+
+    /// 코드로 찾은 결과.
+    enum RequestResult { case notFound, sent, alreadyFriend, offline }
+
     private let store: StudyStore
     private let service = FriendService()
     private var bag = Set<AnyCancellable>()
     private var pollTask: Task<Void, Never>?
 
-    /// 친구 이벤트를 확인하는 간격. 공부 이벤트는 드무니 촘촘할 필요가 없다.
+    /// 친구 이벤트·관계를 확인하는 간격. 공부 이벤트는 드무니 촘촘할 필요가 없다.
     private static let pollInterval: Duration = .seconds(8)
 
     init(store: StudyStore) {
@@ -39,10 +46,11 @@ final class FriendSync: ObservableObject {
             }
             .store(in: &bag)
 
-        // 친구 이벤트를 주기적으로 가져온다.
+        // 관계와 이벤트를 주기적으로 확인한다.
         pollTask = Task { [weak self] in
             while !Task.isCancelled {
-                await self?.pollOnce()
+                await self?.refreshRelationships()
+                await self?.pollEvents()
                 try? await Task.sleep(for: Self.pollInterval)
             }
         }
@@ -61,12 +69,57 @@ final class FriendSync: ObservableObject {
         Task { await service.pushProfile(me) }
     }
 
-    /// 초대 코드로 친구를 찾는다. UI에서 부른다.
-    func lookup(code: String) async -> Friend? {
-        await service.lookup(code: code)
+    // MARK: 친구 맺기
+
+    /// 코드로 상대를 찾아 **요청을 보낸다.** 바로 친구가 되지 않는다 — 상대가 수락해야 한다.
+    func request(code: String) async -> RequestResult {
+        guard SupabaseConfig.isConfigured else { return .offline }
+        let me = store.profile
+        guard let found = await service.lookup(code: code), found.id != me.id else {
+            return .notFound
+        }
+        if store.friend(found.id) != nil { return .alreadyFriend }
+
+        await service.sendRequest(from: me.id, to: found.id)
+        // 상대가 이미 나에게 요청해 둔 상태였다면, 내 요청이 곧 수락이 된다.
+        await service.accept(me: me.id, requester: found.id)
+        await refreshRelationships()
+        return .sent
     }
 
-    private func pollOnce() async {
+    /// 나에게 온 요청을 수락한다. 이 순간부터 서로 친구다.
+    func accept(_ friend: Friend) async {
+        guard SupabaseConfig.isConfigured else { return }
+        await service.accept(me: store.profile.id, requester: friend.id)
+        await refreshRelationships()
+    }
+
+    /// 친구를 끊는다. 서버의 양방향 줄을 지우고 로컬에서도 뺀다.
+    func remove(_ friend: Friend) async {
+        store.removeFriend(friend.id)
+        guard SupabaseConfig.isConfigured else { return }
+        await service.remove(me: store.profile.id, other: friend.id)
+        await refreshRelationships()
+    }
+
+    // MARK: 서버에서 당겨오기
+
+    /// 수락된 친구 목록과 대기 중인 요청을 서버에서 가져와 반영한다.
+    private func refreshRelationships() async {
+        let me = store.profile.id
+
+        // 수락된 친구 → 로컬 캐시를 서버 상태로 맞춘다.
+        let acceptedIDs = await service.acceptedFriendIDs(me: me)
+        let accepted = await service.profiles(ids: acceptedIDs)
+        store.syncFriends(accepted)
+
+        // 대기 중인 요청 → 이미 친구인 사람은 뺀다.
+        let pendingIDs = await service.incomingRequesterIDs(me: me)
+            .filter { id in !accepted.contains { $0.id == id } }
+        incoming = await service.profiles(ids: pendingIDs)
+    }
+
+    private func pollEvents() async {
         let events = await service.poll(friendIDs: store.friendIDs)
         for remote in events {
             guard let friend = store.friend(remote.user_id),

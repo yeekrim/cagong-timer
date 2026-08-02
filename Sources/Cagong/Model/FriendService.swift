@@ -92,6 +92,105 @@ actor FriendService {
         let code: String
     }
 
+    /// 여러 id의 프로필을 한 번에 가져온다. 친구 목록을 이름으로 채울 때 쓴다.
+    func profiles(ids: [UUID]) async -> [Friend] {
+        guard !ids.isEmpty else { return [] }
+        let list = ids.map(\.uuidString).joined(separator: ",")
+        guard var req = request(
+            path: "/profiles",
+            query: "id=in.(\(list))&select=id,name,code"
+        ) else { return [] }
+        req.httpMethod = "GET"
+
+        guard let (data, _) = try? await session.data(for: req),
+              let rows = try? decoder.decode([ProfileRow].self, from: data)
+        else { return [] }
+        return rows.map { Friend(id: $0.id, name: $0.name, code: $0.code) }
+    }
+
+    // MARK: 친구 관계
+    //
+    // 관계는 서버의 friendships가 진실이다. 로컬 친구 목록은 그 반영일 뿐.
+    // 한 줄이 방향을 갖는다: requester가 addressee에게 요청한다.
+    //   pending   — 보냈고 아직 수락 안 됨
+    //   accepted  — 서로 친구
+    //   removed   — 한쪽이 끊음 (양쪽에서 사라진다)
+
+    private struct FriendshipRow: Decodable {
+        let requester: UUID
+        let addressee: UUID
+    }
+
+    /// 친구 요청을 보낸다. 이미 있으면 무시된다(같은 방향 유니크).
+    func sendRequest(from me: UUID, to other: UUID) async {
+        guard me != other, var req = request(path: "/friendships") else { return }
+        req.httpMethod = "POST"
+        req.setValue("resolution=ignore-duplicates", forHTTPHeaderField: "Prefer")
+
+        let body: [String: String] = [
+            "requester": me.uuidString,
+            "addressee": other.uuidString,
+            "status": "pending"
+        ]
+        req.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        _ = try? await session.data(for: req)
+    }
+
+    /// 나를 향한 대기 중인 요청의 상대 id들. (내가 수락해야 할 사람들)
+    func incomingRequesterIDs(me: UUID) async -> [UUID] {
+        guard var req = request(
+            path: "/friendships",
+            query: "addressee=eq.\(me.uuidString)&status=eq.pending&select=requester,addressee"
+        ) else { return [] }
+        req.httpMethod = "GET"
+
+        guard let (data, _) = try? await session.data(for: req),
+              let rows = try? decoder.decode([FriendshipRow].self, from: data)
+        else { return [] }
+        return rows.map(\.requester)
+    }
+
+    /// 수락된 친구들의 상대 id. 내가 보냈든 받았든 상관없이 모은다.
+    func acceptedFriendIDs(me: UUID) async -> [UUID] {
+        let mine = me.uuidString
+        guard var req = request(
+            path: "/friendships",
+            query: "or=(requester.eq.\(mine),addressee.eq.\(mine))"
+                 + "&status=eq.accepted&select=requester,addressee"
+        ) else { return [] }
+        req.httpMethod = "GET"
+
+        guard let (data, _) = try? await session.data(for: req),
+              let rows = try? decoder.decode([FriendshipRow].self, from: data)
+        else { return [] }
+        // 나 아닌 쪽이 친구다.
+        return rows.map { $0.requester == me ? $0.addressee : $0.requester }
+    }
+
+    /// 나에게 온 요청을 수락한다. requester → me 방향의 줄을 accepted로 바꾼다.
+    func accept(me: UUID, requester: UUID) async {
+        guard var req = request(
+            path: "/friendships",
+            query: "requester=eq.\(requester.uuidString)&addressee=eq.\(me.uuidString)"
+        ) else { return }
+        req.httpMethod = "PATCH"
+        req.httpBody = try? JSONSerialization.data(withJSONObject: ["status": "accepted"])
+        _ = try? await session.data(for: req)
+    }
+
+    /// 관계를 끊는다. 양방향 줄을 removed로 바꿔 서로에게서 사라지게 한다.
+    func remove(me: UUID, other: UUID) async {
+        let a = me.uuidString, b = other.uuidString
+        guard var req = request(
+            path: "/friendships",
+            query: "or=(and(requester.eq.\(a),addressee.eq.\(b)),"
+                 + "and(requester.eq.\(b),addressee.eq.\(a)))"
+        ) else { return }
+        req.httpMethod = "PATCH"
+        req.httpBody = try? JSONSerialization.data(withJSONObject: ["status": "removed"])
+        _ = try? await session.data(for: req)
+    }
+
     // MARK: 이벤트 보내기
 
     /// 내 이벤트를 서버에 남긴다. 친구들이 폴링으로 가져간다.
