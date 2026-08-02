@@ -3,44 +3,45 @@ import AppKit
 
 // MARK: - 타이포그래피
 //
-// 라틴 글자와 숫자는 American Typewriter가 맡는다. 공부 기록장·영수증의 목소리다.
-// 한글은 타이프라이터에 대응하는 꼴이 없으므로 Apple SD Gothic Neo로 명확히 갈라 쓴다.
-// 섞어 쓰면서 폴백에 맡기지 않는 게 요점이다.
+// 시스템 글꼴 하나로 통일한다.
+//
+// 예전에는 라틴 글자와 숫자를 American Typewriter가 맡았다. 큰 숫자 한둘에는
+// 멋이었지만, 먼슬리처럼 작은 숫자가 30개 넘게 깔리는 면에서는 읽기 힘들었다.
+// 한글은 대응하는 꼴이 없어 따로 갈라 써야 했고, 그래서 한 화면 안에서 두 인상이
+// 어긋났다.
+//
+// 지금은 전부 `.system`이다. 한글은 시스템 폴백이 Apple SD Gothic Neo로 받으므로
+// 한글 꼴 자체는 예전과 같고, 숫자와 라틴만 담백해진다.
+//
+// 이름은 그대로 둔다 — 호출부가 "여기는 히어로 숫자", "여기는 작은 라벨"이라고
+// 말하고 있어서, 무게만 여기서 갈아끼우면 된다.
 
 enum Typo {
-    /// 히어로 숫자. 자리폭을 직접 고정하므로 fixedSize로 둔다.
-    static func numerals(_ size: CGFloat) -> Font {
-        .custom("AmericanTypewriter-Bold", fixedSize: size)
+    /// 모든 글자의 바탕. 무게를 직접 고를 때 쓴다.
+    static func plain(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
+        .system(size: size, weight: weight)
     }
+
+    /// 히어로 숫자.
+    ///
+    /// 자리폭은 `TimeDisplay`가 글자마다 직접 고정한다(숫자 0.60 em, 콜론 0.30 em).
+    /// 시스템 숫자는 0.651 em으로 타이프라이터(0.655 em)와 거의 같아서
+    /// 카드 폭 계산(4.2 × 글자크기)이 그대로 유효하다.
+    static func numerals(_ size: CGFloat) -> Font { plain(size, weight: .bold) }
 
     /// 라틴 소제목·연도·월 표기
-    static func stamp(_ size: CGFloat) -> Font {
-        .custom("AmericanTypewriter-Semibold", fixedSize: size)
-    }
+    static func stamp(_ size: CGFloat) -> Font { plain(size, weight: .semibold) }
 
     /// 작은 라벨. 대문자 + 자간을 넓혀 쓴다.
-    static func label(_ size: CGFloat) -> Font {
-        .custom("AmericanTypewriter", fixedSize: size)
-    }
+    static func label(_ size: CGFloat) -> Font { plain(size, weight: .medium) }
 
-    /// 한글 제목
-    static func title(_ size: CGFloat) -> Font {
-        .custom("AppleSDGothicNeo-Bold", size: size)
-    }
+    /// 제목
+    static func title(_ size: CGFloat) -> Font { plain(size, weight: .bold) }
 
-    /// 한글 본문
-    static func body(_ size: CGFloat) -> Font {
-        .custom("AppleSDGothicNeo-Regular", size: size)
-    }
+    /// 본문
+    static func body(_ size: CGFloat) -> Font { plain(size) }
 
-    static func bodyStrong(_ size: CGFloat) -> Font {
-        .custom("AppleSDGothicNeo-SemiBold", size: size)
-    }
-
-    /// 명조 계열 한글. 카페 테마의 인용·부제에만 아껴 쓴다.
-    static func serifKo(_ size: CGFloat) -> Font {
-        .custom("AppleMyungjo", size: size)
-    }
+    static func bodyStrong(_ size: CGFloat) -> Font { plain(size, weight: .semibold) }
 }
 
 // MARK: - 모션

@@ -330,7 +330,8 @@ private struct DayCell: View {
 
                 if hasRecord {
                     Text(TimeFormat.compact(seconds))
-                        .font(Typo.label(10))
+                        .font(Typo.plain(10.5, weight: .semibold))
+                        .monospacedDigit()
                         .foregroundStyle(timeColor)
                         .contentTransition(.numericText())
                         .padding(.bottom, 7)
@@ -401,6 +402,9 @@ private struct DayDetail: View {
     let theme: Theme
     /// 체크는 지난 날에도 언제든 바꿀 수 있다. 글자는 못 고친다.
     let onToggle: (UUID) -> Void
+
+    /// 구간 목록은 접어둔다. 자세히 보고 싶을 때만 편다.
+    @State private var showSessions = false
 
     private var doneCount: Int { todos.filter(\.done).count }
 
@@ -492,47 +496,97 @@ private struct DayDetail: View {
                 .font(Typo.body(10.5))
                 .foregroundStyle(theme.p.inkSoft.opacity(0.85))
             Text(value)
-                .font(Typo.stamp(14))
+                .font(Typo.plain(14.5, weight: .semibold))
+                .monospacedDigit()
                 .foregroundStyle(theme.p.ink)
         }
         .frame(maxWidth: .infinity)
     }
 
     /// 구간이 여럿이면 어떻게 쪼개 앉았는지도 보여준다.
-    /// 길어지면 팝오버가 화면을 넘기므로 앞의 몇 개만 적고 나머지는 세어서 알린다.
-    private static let sessionLimit = 4
-
+    ///
+    /// **접어둔다.** 잠깐씩 여러 번 눌렀다 뗀 날은 구간이 수십 개가 되는데,
+    /// 그게 다 펼쳐져 있으면 정작 보려던 시간과 할 일이 밀려난다.
+    /// 평소엔 몇 번 앉았는지만 알려주고, 궁금할 때 편다.
     @ViewBuilder
     private var sessionList: some View {
         if sessions.count > 1 {
             Divider().overlay(theme.p.cardStroke.opacity(0.6))
 
-            VStack(alignment: .leading, spacing: 6) {
-                ForEach(sessions.prefix(Self.sessionLimit)) { session in
-                    HStack(spacing: 8) {
-                        Text(KoDate.hourMinute(session.start)
-                             + " – "
-                             + (session.end.map(KoDate.hourMinute) ?? "…"))
-                            .font(Typo.label(11))
-                            .foregroundStyle(theme.p.inkSoft)
+            VStack(alignment: .leading, spacing: 0) {
+                sessionToggle
 
-                        Spacer(minLength: 8)
-
-                        Text(TimeFormat.human(session.length()))
-                            .font(Typo.body(11.5))
-                            .foregroundStyle(theme.p.inkSoft.opacity(0.85))
+                if showSessions {
+                    // 높이를 **확정해서** 준다. `maxHeight`로 두면 아무것도 안 보인다 —
+                    // ScrollView는 고유 높이가 없어 부모가 제안하는 크기를 그대로 받는데,
+                    // 팝오버는 내용에 맞춰 크기를 정하므로 서로 미루다 0이 된다.
+                    ScrollView(.vertical, showsIndicators: false) {
+                        VStack(alignment: .leading, spacing: Self.sessionRowSpacing) {
+                            ForEach(sessions) { session in
+                                sessionRow(session)
+                            }
+                        }
                     }
-                }
-
-                if sessions.count > Self.sessionLimit {
-                    Text("외 \(sessions.count - Self.sessionLimit)번 더 앉았어요")
-                        .font(Typo.body(11))
-                        .foregroundStyle(theme.p.inkSoft.opacity(0.7))
+                    .frame(height: sessionsHeight)
+                    .padding(.bottom, 12)
+                    .transition(.opacity)
                 }
             }
             .padding(.horizontal, 18)
-            .padding(.vertical, 10)
         }
+    }
+
+    // 높이를 직접 계산하므로 줄 높이도 고정해 둔다. 둘이 어긋나면 마지막 줄이 잘린다.
+    private static let sessionRowHeight: CGFloat = 17
+    private static let sessionRowSpacing: CGFloat = 6
+    /// 이만큼만 보이고 나머지는 스크롤로 넘긴다.
+    private static let sessionVisibleRows = 6
+
+    private var sessionsHeight: CGFloat {
+        let rows = CGFloat(min(sessions.count, Self.sessionVisibleRows))
+        return rows * Self.sessionRowHeight + max(0, rows - 1) * Self.sessionRowSpacing
+    }
+
+    private var sessionToggle: some View {
+        Button {
+            withAnimation(Motion.button) { showSessions.toggle() }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(theme.p.inkSoft.opacity(0.7))
+                    .rotationEffect(.degrees(showSessions ? 90 : 0))
+
+                Text("\(sessions.count)번 나눠서 했어요")
+                    .font(Typo.body(11.5))
+                    .foregroundStyle(theme.p.inkSoft)
+
+                Spacer(minLength: 8)
+            }
+            .padding(.vertical, 10)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PressableStyle(scale: 0.99))
+        .help(showSessions ? "구간 접기" : "언제언제 앉았는지 보기")
+    }
+
+    private func sessionRow(_ session: StudySession) -> some View {
+        HStack(spacing: 8) {
+            Text(KoDate.hourMinute(session.start)
+                 + " – "
+                 + (session.end.map(KoDate.hourMinute) ?? "…"))
+                .font(Typo.plain(11.5))
+                .monospacedDigit()
+                .foregroundStyle(theme.p.inkSoft)
+
+            Spacer(minLength: 8)
+
+            Text(TimeFormat.human(session.length()))
+                .font(Typo.body(11.5))
+                .foregroundStyle(theme.p.inkSoft.opacity(0.85))
+        }
+        // 높이를 계산해서 프레임을 주므로 줄도 그 값에 맞춰 고정한다.
+        .frame(height: Self.sessionRowHeight)
     }
 
     private var list: some View {
