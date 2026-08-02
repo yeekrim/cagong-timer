@@ -65,7 +65,15 @@ final class StudyStore: ObservableObject {
             self.fileURL = dir.appendingPathComponent("study-data.json")
         }
 
-        data = Self.load(from: self.fileURL) ?? AppData()
+        var loaded = Self.load(from: self.fileURL) ?? AppData()
+
+        // 신원은 파일이 아니라 UserDefaults가 진실이다. 파일이 어떤 이유로 프로필 없이
+        // 다시 써져도 id가 새로 태어나지 않게 — 서버 친구 관계가 이 id에 묶여 있다.
+        let ident = DeviceIdentity.resolve(migratingFrom: loaded.profile)
+        loaded.profile.id = ident.id
+        loaded.profile.code = ident.code
+
+        data = loaded
         measuringKey = DateKey.today()
     }
 
@@ -379,6 +387,10 @@ final class StudyStore: ObservableObject {
     var friends: [Friend] { data.friends }
     var friendIDs: [UUID] { data.friends.map(\.id) }
 
+    // 친구 추가·삭제는 드물지만 잃으면 곤란하다. 그 자리에서 flush로 디스크에 박는다.
+    // 이름은 한 글자마다 불리므로 flush(매번 전체 인코딩·동기 쓰기)는 과하다 —
+    // save는 다음 런루프에 백그라운드로 쓰므로 사실상 즉시 남으면서 입력을 막지 않는다.
+
     func setMyName(_ name: String) {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed != data.profile.name else { return }
@@ -394,12 +406,12 @@ final class StudyStore: ObservableObject {
         } else {
             data.friends.append(friend)
         }
-        save()
+        flush()
     }
 
     func removeFriend(_ id: UUID) {
         data.friends.removeAll { $0.id == id }
-        save()
+        flush()
     }
 
     /// 서버가 준 수락된 친구 목록으로 로컬 캐시를 통째로 맞춘다.
@@ -409,10 +421,37 @@ final class StudyStore: ObservableObject {
         let current = data.friends.sorted { $0.id.uuidString < $1.id.uuidString }
         guard sorted != current else { return }
         data.friends = list
-        save()
+        flush()
     }
 
     func friend(_ id: UUID) -> Friend? { data.friends.first { $0.id == id } }
+
+    /// 지금 내 상태. 친구에게 보여줄 presence를 만든다.
+    ///
+    /// 재는 중이면 그 날짜(measuringKey)를, 아니면 오늘을 기준으로 본다.
+    func myPresence(at now: Date = Date()) -> Presence {
+        let key = isRunning ? measuringKey : DateKey.today()
+        let rec = data.days[key]
+
+        let state: PresenceState
+        if isRunning {
+            state = .studying
+        } else if rec?.closed == true {
+            state = .finished
+        } else if (rec?.seconds ?? 0) > 0 {
+            state = .resting
+        } else {
+            state = .idle
+        }
+
+        return Presence(
+            state: state,
+            dayKey: key,
+            seconds: seconds(for: key, at: now),
+            goalMinutes: goalMinutes(for: key),
+            updatedAt: now
+        )
+    }
 
     // MARK: - 조회
 

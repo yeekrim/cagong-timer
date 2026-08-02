@@ -470,6 +470,68 @@ struct StoreTest {
 
         try? FileManager.default.removeItem(at: fFile)
 
+        // ── 친구 현재 상태(presence) ──────────────────────────────
+        print("\n── 내 상태 스냅샷 ──")
+        let pFile = tempFile()
+        let ps = StudyStore(fileURL: pFile)
+
+        let idlePresence = ps.myPresence()
+        check("시작 전이면 idle", idlePresence.state == .idle)
+        check("idle이면 0초", idlePresence.seconds == 0)
+
+        ps.beginDay(todos: [])
+        ps.start()
+        check("재는 중이면 studying", ps.myPresence().state == .studying)
+        ps.pause()
+        check("멈추면 resting", ps.myPresence().state == .resting)
+        check("resting이어도 잰 시간은 남는다", ps.myPresence().seconds >= 0)
+        ps.endDay()
+        check("Zzz 누르면 finished", ps.myPresence().state == .finished)
+
+        print("\n── presence를 보는 사람 기준으로 해석 ──")
+        let pToday = DateKey.today()
+        let pNow = Date()
+
+        let studyingFresh = Presence(state: .studying, dayKey: pToday,
+                                     seconds: 600, goalMinutes: 240, updatedAt: pNow)
+        let r1 = FriendActivity.resolve(studyingFresh, now: pNow.addingTimeInterval(30), today: pToday)
+        check("갱신이 최근이면 studying", r1.activity == .studying)
+        check("studying이면 흐른 만큼 이어 준다 (약 630초)",
+              r1.seconds >= 629 && r1.seconds <= 631)
+
+        let studyingStale = Presence(state: .studying, dayKey: pToday,
+                                     seconds: 600, goalMinutes: 240,
+                                     updatedAt: pNow.addingTimeInterval(-200))
+        let r2 = FriendActivity.resolve(studyingStale, now: pNow, today: pToday)
+        check("오래 끊기면 away", r2.activity == .away)
+        check("away면 시간을 이어주지 않는다", abs(r2.seconds - 600) < 0.1)
+
+        let restedYesterday = Presence(state: .resting, dayKey: "2020-01-01",
+                                       seconds: 3600, goalMinutes: 240, updatedAt: pNow)
+        let r3 = FriendActivity.resolve(restedYesterday, now: pNow, today: pToday)
+        check("마지막 활동이 어제면 오늘은 idle", r3.activity == .idle)
+        check("어제 것이면 0초로 보인다", r3.seconds == 0)
+
+        let finishedToday = Presence(state: .finished, dayKey: pToday,
+                                     seconds: 7200, goalMinutes: 240, updatedAt: pNow)
+        check("오늘 끝냈으면 finished 그대로",
+              FriendActivity.resolve(finishedToday, now: pNow, today: pToday).activity == .finished)
+
+        check("아무 상태도 없으면 idle", FriendActivity.resolve(nil, today: pToday).activity == .idle)
+
+        // FriendStatus의 라이브 시간
+        let live = FriendStatus(friend: Friend(id: UUID(), name: "친구", code: "AAA111"),
+                                activity: .studying, seconds: 100, goalMinutes: 60,
+                                anchoredAt: pNow)
+        check("studying은 화면에서 초가 흐른다",
+              live.liveSeconds(at: pNow.addingTimeInterval(10)) >= 109)
+        let restLive = FriendStatus(friend: live.friend, activity: .resting,
+                                    seconds: 100, goalMinutes: 60, anchoredAt: pNow)
+        check("resting은 시간이 고정",
+              restLive.liveSeconds(at: pNow.addingTimeInterval(10)) == 100)
+
+        try? FileManager.default.removeItem(at: pFile)
+
         // ── 월 합계 ─────────────────────────────────────────────
         print("\n── 월 합계 ──")
         let c = Calendar.current.dateComponents([.year, .month], from: Date())

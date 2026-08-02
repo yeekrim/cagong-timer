@@ -17,7 +17,7 @@ struct RootView: View {
     /// 탭 알약이 미끄러진다.
     @Namespace private var tabSpace
 
-    enum Tab: Hashable { case study, monthly }
+    enum Tab: Hashable { case study, monthly, friends }
 
     /// - Parameter initialTab: 스냅샷 렌더링에서 특정 탭을 바로 띄우기 위한 진입점.
     init(initialTab: Tab = .study) {
@@ -168,6 +168,7 @@ struct RootView: View {
         HStack(spacing: 3) {
             tabButton(.study, label: store.isDayOpen ? "공부" : "시작")
             tabButton(.monthly, label: "먼슬리")
+            tabButton(.friends, label: "친구")
         }
         .padding(3)
         .glass(Capsule())
@@ -263,6 +264,9 @@ struct RootView: View {
             }
         case .monthly:
             MonthlyView(theme: theme, namespace: cupSpace)
+                .transition(screenTransition)
+        case .friends:
+            FriendsBoardView(theme: theme)
                 .transition(screenTransition)
         }
     }

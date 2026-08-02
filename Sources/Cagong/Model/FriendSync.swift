@@ -15,6 +15,9 @@ final class FriendSync: ObservableObject {
     /// 서버가 진실이라 저장하지 않는다 — 폴링할 때마다 다시 채운다.
     @Published private(set) var incoming: [Friend] = []
 
+    /// 친구 탭에 그릴 각 친구의 현재 상태. 폴링할 때마다 갱신된다.
+    @Published private(set) var board: [FriendStatus] = []
+
     /// 코드로 찾은 결과.
     enum RequestResult { case notFound, sent, alreadyFriend, offline }
 
@@ -37,23 +40,43 @@ final class FriendSync: ObservableObject {
         let me = store.profile
         Task { await service.pushProfile(me) }
 
-        // 내 이벤트가 생기면 서버로 흘려보낸다.
+        // 내 이벤트가 생기면 서버로 흘려보내고, 내 상태도 갱신한다.
         store.events
             .sink { [weak self] event in
                 guard let self else { return }
                 let id = self.store.profile.id
                 Task { await self.service.send(event, from: id) }
+                self.pushPresence()
             }
             .store(in: &bag)
 
-        // 관계와 이벤트를 주기적으로 확인한다.
+        // 시작·멈춤이 바뀌면(공부↔휴식) 상태를 바로 올린다.
+        store.$isRunning
+            .removeDuplicates()
+            .sink { [weak self] _ in self?.pushPresence() }
+            .store(in: &bag)
+
+        pushPresence()   // 켜자마자 지금 상태를 한 번 올린다.
+
+        // 관계·이벤트·친구 상태를 주기적으로 확인하고, 내 상태도 heartbeat로 올린다.
         pollTask = Task { [weak self] in
             while !Task.isCancelled {
                 await self?.refreshRelationships()
                 await self?.pollEvents()
+                await self?.refreshBoard()
+                // 재는 중이면 초가 흐르므로 heartbeat로 갱신해 친구 화면이 따라오게 한다.
+                if self?.store.isRunning == true { self?.pushPresence() }
                 try? await Task.sleep(for: Self.pollInterval)
             }
         }
+    }
+
+    /// 내 현재 상태를 서버에 올린다.
+    private func pushPresence() {
+        guard SupabaseConfig.isConfigured else { return }
+        let me = store.profile.id
+        let presence = store.myPresence()
+        Task { await service.pushPresence(presence, for: me) }
     }
 
     func stop() {
@@ -105,18 +128,52 @@ final class FriendSync: ObservableObject {
     // MARK: 서버에서 당겨오기
 
     /// 수락된 친구 목록과 대기 중인 요청을 서버에서 가져와 반영한다.
+    ///
+    /// **가져오기에 실패하면 로컬을 건드리지 않는다.** 네트워크가 잠깐 끊겼다고
+    /// 친구 목록을 지워버리면 안 된다 — 예전엔 실패가 빈 배열로 취급돼 그랬다.
     private func refreshRelationships() async {
         let me = store.profile.id
 
-        // 수락된 친구 → 로컬 캐시를 서버 상태로 맞춘다.
-        let acceptedIDs = await service.acceptedFriendIDs(me: me)
-        let accepted = await service.profiles(ids: acceptedIDs)
+        // 실패(nil)면 그대로 둔다. 빈 배열이면 진짜로 친구가 없는 것이라 비운다.
+        guard let acceptedIDs = await service.acceptedFriendIDs(me: me) else { return }
+
+        // 이름은 서버에서 채우되, 못 가져온 사람은 기존 캐시 이름을 유지한다.
+        let fetched = await service.profiles(ids: acceptedIDs)
+        let byID = Dictionary(fetched.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        let accepted = acceptedIDs.map { id in
+            byID[id] ?? store.friend(id) ?? Friend(id: id, name: "", code: "")
+        }
         store.syncFriends(accepted)
 
-        // 대기 중인 요청 → 이미 친구인 사람은 뺀다.
-        let pendingIDs = await service.incomingRequesterIDs(me: me)
-            .filter { id in !accepted.contains { $0.id == id } }
+        // 대기 중인 요청 → 이미 친구인 사람은 뺀다. 실패면 지금 목록을 유지한다.
+        guard let pendingRaw = await service.incomingRequesterIDs(me: me) else { return }
+        let pendingIDs = pendingRaw.filter { id in !accepted.contains { $0.id == id } }
         incoming = await service.profiles(ids: pendingIDs)
+    }
+
+    /// 친구들의 현재 상태를 가져와 화면용으로 해석한다.
+    private func refreshBoard() async {
+        let friends = store.friends
+        guard !friends.isEmpty else {
+            if !board.isEmpty { board = [] }
+            return
+        }
+
+        let presences = await service.presences(of: friends.map(\.id))
+        let today = DateKey.today()
+        let now = Date()
+
+        board = friends.map { friend in
+            let (activity, seconds) = FriendActivity.resolve(
+                presences[friend.id], now: now, today: today
+            )
+            // 목표는 상태에 실려 온 그날 목표. 없으면 0.
+            let goal = presences[friend.id]?.goalMinutes ?? 0
+            return FriendStatus(
+                friend: friend, activity: activity, seconds: seconds,
+                goalMinutes: goal, anchoredAt: now
+            )
+        }
     }
 
     private func pollEvents() async {

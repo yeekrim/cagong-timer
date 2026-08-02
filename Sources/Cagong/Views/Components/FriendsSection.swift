@@ -30,6 +30,11 @@ struct FriendsSection: View {
             }
         }
         .onAppear { nameDraft = store.profile.name }
+        // 설정을 닫을 때 디스크에도, 서버에도 확실히 남긴다.
+        .onDisappear {
+            store.flush()
+            friendSync.syncProfile()
+        }
     }
 
     // MARK: 나
@@ -48,13 +53,10 @@ struct FriendsSection: View {
                         .textFieldStyle(.plain)
                         .font(Typo.body(14))
                         .foregroundStyle(theme.p.ink)
-                        .onSubmit(commitName)
-                    if nameDraft != store.profile.name {
-                        Button("저장", action: commitName)
-                            .buttonStyle(PressableStyle())
-                            .font(Typo.bodyStrong(12))
-                            .foregroundStyle(theme.p.accent)
-                    }
+                        // 매 입력마다 로컬에 바로 반영한다 — Enter를 안 눌러도 안 사라진다.
+                        .onChange(of: nameDraft) { _, new in store.setMyName(new) }
+                        // 서버로 올리는 건 다 치고 났을 때만(입력마다 요청을 보내지 않는다).
+                        .onSubmit { friendSync.syncProfile() }
                 }
 
                 Divider().overlay(theme.p.cardStroke)
@@ -272,11 +274,6 @@ struct FriendsSection: View {
     }
 
     // MARK: 동작
-
-    private func commitName() {
-        store.setMyName(nameDraft)
-        friendSync.syncProfile()
-    }
 
     private func copyCode() {
         NSPasteboard.general.clearContents()

@@ -82,11 +82,10 @@ struct TimerView: View {
             // 시간이 흐른다고 다시 그릴 이유가 없다.
             dateChip
 
-            // 배지와 시계는 다르다. **자정을 넘기면 재는 날짜가 가만히 있어도
-            // '어제'가 되므로** 배지가 저절로 떠야 한다.
-            //
-            // store는 이제 초 단위로 알리지 않는다(그러면 화면 전체가 다시 평가된다).
-            // 그래서 여기서 직접 시간을 보고, 이 줄만 다시 그린다.
+            // "어제 기록 중" 배지. **자정을 넘기면 재는 날짜가 가만히 있어도
+            // '어제'가 되므로** 배지가 저절로 떠야 한다. 그래서 store가 아니라
+            // 시간을 직접 보는 TimelineView로 이 줄만 다시 그린다.
+            // (현재 시각 시계는 뺐다 — 메모지 위에 걸리적거려서.)
             TimelineView(.periodic(from: .now, by: 1)) { context in
                 let label = pastDayLabel(at: context.date)
 
@@ -102,11 +101,6 @@ struct TimerView: View {
                     }
 
                     Spacer()
-
-                    Text(KoDate.clock(context.date))
-                        .font(Typo.stamp(13))
-                        .foregroundStyle(theme.p.inkSoft)
-                        .monospacedDigit()
                 }
                 .animation(Motion.button, value: label)
             }

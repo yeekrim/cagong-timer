@@ -275,6 +275,101 @@ struct Friend: Codable, Sendable, Identifiable, Hashable {
     }
 }
 
+// MARK: - 친구 현재 상태 (presence)
+
+/// 지금 무엇을 하고 있는지. 서버에 한 줄로 올려두고 친구가 읽어간다.
+///
+/// 이벤트(started/finished…)가 "방금 벌어진 순간"이라면, presence는 "지금 이 상태"다.
+/// 친구 탭은 순간이 아니라 현재를 보여줘야 하므로 이게 따로 필요하다.
+enum PresenceState: String, Codable, Sendable {
+    case studying   // 재는 중
+    case resting    // 멈췄지만 아직 안 끝냄
+    case finished   // 오늘 공부 끝(Zzz)
+    case idle       // 오늘 아직 시작 안 함
+}
+
+/// 서버에 올리는 현재 상태 스냅샷.
+struct Presence: Codable, Sendable {
+    var state: PresenceState
+    var dayKey: String
+    var seconds: TimeInterval
+    var goalMinutes: Int
+    var updatedAt: Date
+
+    init(state: PresenceState, dayKey: String, seconds: TimeInterval,
+         goalMinutes: Int, updatedAt: Date = Date()) {
+        self.state = state
+        self.dayKey = dayKey
+        self.seconds = seconds
+        self.goalMinutes = goalMinutes
+        self.updatedAt = updatedAt
+    }
+}
+
+/// 친구 탭에 실제로 그릴 상태. presence를 "보는 사람 기준"으로 해석한 결과다.
+///
+/// - 재는 중인데 갱신이 끊긴 지 오래면 → 앱을 닫은 것이니 `away`
+/// - 마지막 활동이 어제였으면 → 오늘은 아직 `idle`
+enum FriendActivity: String {
+    case studying, away, resting, finished, idle
+
+    var label: String {
+        switch self {
+        case .studying: return "공부 중"
+        case .away:     return "잠시 자리 비움"
+        case .resting:  return "휴식 중"
+        case .finished: return "오늘 공부 끝"
+        case .idle:     return "아직 시작 전"
+        }
+    }
+
+    /// presence를 지금·오늘 기준으로 풀어, 화면에 쓸 상태와 시간을 낸다.
+    ///
+    /// 재는 중이면 마지막 갱신 이후 흐른 만큼을 더해 초를 이어 준다(대략 실시간).
+    /// 단 갱신이 `awayAfter`보다 오래 끊겼으면 이어주지 않고 `away`로 본다.
+    static func resolve(
+        _ p: Presence?,
+        now: Date = Date(),
+        today: String,
+        awayAfter: TimeInterval = 90
+    ) -> (activity: FriendActivity, seconds: TimeInterval) {
+        guard let p else { return (.idle, 0) }
+
+        if p.state == .studying {
+            let gap = now.timeIntervalSince(p.updatedAt)
+            if gap > awayAfter { return (.away, p.seconds) }
+            return (.studying, p.seconds + max(0, gap))
+        }
+
+        // 마지막 활동이 오늘이 아니면 오늘은 아직 시작 전이다.
+        guard p.dayKey == today else { return (.idle, 0) }
+        return (FriendActivity(rawValue: p.state.rawValue) ?? .idle, p.seconds)
+    }
+}
+
+/// 친구 탭 한 줄. 친구 + 해석된 상태.
+struct FriendStatus: Identifiable, Sendable {
+    let friend: Friend
+    let activity: FriendActivity
+    /// `anchoredAt` 시점의 누적 시간. 공부 중이면 화면에서 이후 흐른 만큼을 더한다.
+    let seconds: TimeInterval
+    let goalMinutes: Int
+    /// `seconds`를 잰 시각. 폴링 사이에도 초가 흐르게 하는 기준점.
+    let anchoredAt: Date
+
+    var id: UUID { friend.id }
+
+    /// 지금 이 순간 보여줄 시간. 공부 중이면 기준점 이후 흐른 만큼을 이어 붙인다.
+    func liveSeconds(at now: Date) -> TimeInterval {
+        guard activity == .studying else { return seconds }
+        return seconds + max(0, now.timeIntervalSince(anchoredAt))
+    }
+
+    func progress(at now: Date) -> Double {
+        goalMinutes > 0 ? min(1, liveSeconds(at: now) / Double(goalMinutes * 60)) : 0
+    }
+}
+
 // MARK: - 저장 파일 전체
 
 /// 저장 파일은 통째로 값 타입이다.

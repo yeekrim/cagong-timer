@@ -409,28 +409,53 @@ private struct DayDetail: View {
     private var doneCount: Int { todos.filter(\.done).count }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            header
+        // 팝오버 전체를 하나의 스크롤로 둔다.
+        //
+        // 예전에는 구간 목록에만 안쪽 스크롤을 뒀는데, 그러면 구간을 펼쳤을 때
+        // 그 아래 TODO가 팝오버 밖으로 밀려나고 바깥은 안 스크롤돼서 닿을 수가 없었다.
+        // 게다가 팝오버가 내용에 맞춰 커지다 화면 끝에 닿으면 옆으로 튀었다.
+        // 이제 높이를 정해두고(min) 넘치면 이 스크롤 하나가 전부 받아준다.
+        ScrollView(.vertical, showsIndicators: true) {
+            VStack(alignment: .leading, spacing: 0) {
+                header
 
-            if !sessions.isEmpty {
-                Divider().overlay(theme.p.cardStroke)
-                clockRow
-                sessionList
-            }
+                if !sessions.isEmpty {
+                    Divider().overlay(theme.p.cardStroke)
+                    clockRow
+                    sessionList
+                }
 
-            if todos.isEmpty {
-                Text("적어둔 할 일이 없던 날이에요.")
-                    .font(Typo.body(12.5))
-                    .foregroundStyle(theme.p.inkSoft)
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 16)
-            } else {
-                Divider().overlay(theme.p.cardStroke)
-                list
+                if todos.isEmpty {
+                    Text("적어둔 할 일이 없던 날이에요.")
+                        .font(Typo.body(12.5))
+                        .foregroundStyle(theme.p.inkSoft)
+                        .padding(.horizontal, 18)
+                        .padding(.vertical, 16)
+                } else {
+                    Divider().overlay(theme.p.cardStroke)
+                    list
+                }
             }
         }
-        .frame(width: 276)
+        .frame(width: 276, height: min(estimatedHeight, Self.maxHeight))
         .background(theme.p.card)
+    }
+
+    /// 내용 높이를 대략 잰다. 넘치면 스크롤, 모자라면 딱 맞게 줄인다.
+    /// 조금 적게 잡혀도 스크롤이 받아주니 안전하다.
+    private static let maxHeight: CGFloat = 460
+
+    private var estimatedHeight: CGFloat {
+        var h: CGFloat = 92                       // 머리(날짜·총시간)
+        if !sessions.isEmpty {
+            h += 48                               // 시작·마무리 줄
+            if sessions.count > 1 {
+                h += 40                           // 펼치기 토글
+                if showSessions { h += CGFloat(sessions.count) * 24 + 12 }
+            }
+        }
+        h += todos.isEmpty ? 48 : (12 + CGFloat(todos.count) * 34)
+        return h
     }
 
     private var header: some View {
@@ -508,6 +533,7 @@ private struct DayDetail: View {
     /// **접어둔다.** 잠깐씩 여러 번 눌렀다 뗀 날은 구간이 수십 개가 되는데,
     /// 그게 다 펼쳐져 있으면 정작 보려던 시간과 할 일이 밀려난다.
     /// 평소엔 몇 번 앉았는지만 알려주고, 궁금할 때 편다.
+    /// 구간 목록. 펼치면 바깥 스크롤이 통째로 받아주므로 여기엔 스크롤을 두지 않는다.
     @ViewBuilder
     private var sessionList: some View {
         if sessions.count > 1 {
@@ -517,34 +543,17 @@ private struct DayDetail: View {
                 sessionToggle
 
                 if showSessions {
-                    // 높이를 **확정해서** 준다. `maxHeight`로 두면 아무것도 안 보인다 —
-                    // ScrollView는 고유 높이가 없어 부모가 제안하는 크기를 그대로 받는데,
-                    // 팝오버는 내용에 맞춰 크기를 정하므로 서로 미루다 0이 된다.
-                    ScrollView(.vertical, showsIndicators: false) {
-                        VStack(alignment: .leading, spacing: Self.sessionRowSpacing) {
-                            ForEach(sessions) { session in
-                                sessionRow(session)
-                            }
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(sessions) { session in
+                            sessionRow(session)
                         }
                     }
-                    .frame(height: sessionsHeight)
                     .padding(.bottom, 12)
                     .transition(.opacity)
                 }
             }
             .padding(.horizontal, 18)
         }
-    }
-
-    // 높이를 직접 계산하므로 줄 높이도 고정해 둔다. 둘이 어긋나면 마지막 줄이 잘린다.
-    private static let sessionRowHeight: CGFloat = 17
-    private static let sessionRowSpacing: CGFloat = 6
-    /// 이만큼만 보이고 나머지는 스크롤로 넘긴다.
-    private static let sessionVisibleRows = 6
-
-    private var sessionsHeight: CGFloat {
-        let rows = CGFloat(min(sessions.count, Self.sessionVisibleRows))
-        return rows * Self.sessionRowHeight + max(0, rows - 1) * Self.sessionRowSpacing
     }
 
     private var sessionToggle: some View {
@@ -585,8 +594,6 @@ private struct DayDetail: View {
                 .font(Typo.body(11.5))
                 .foregroundStyle(theme.p.inkSoft.opacity(0.85))
         }
-        // 높이를 계산해서 프레임을 주므로 줄도 그 값에 맞춰 고정한다.
-        .frame(height: Self.sessionRowHeight)
     }
 
     private var list: some View {

@@ -137,32 +137,36 @@ actor FriendService {
     }
 
     /// 나를 향한 대기 중인 요청의 상대 id들. (내가 수락해야 할 사람들)
-    func incomingRequesterIDs(me: UUID) async -> [UUID] {
+    ///
+    /// **실패하면 nil이다.** 빈 배열(요청 없음)과 실패를 구분해야 한다 —
+    /// 실패를 빈 값으로 취급하면 네트워크가 잠깐 끊길 때 로컬 상태를 지워버린다.
+    func incomingRequesterIDs(me: UUID) async -> [UUID]? {
         guard var req = request(
             path: "/friendships",
             query: "addressee=eq.\(me.uuidString)&status=eq.pending&select=requester,addressee"
-        ) else { return [] }
+        ) else { return nil }
         req.httpMethod = "GET"
 
         guard let (data, _) = try? await session.data(for: req),
               let rows = try? decoder.decode([FriendshipRow].self, from: data)
-        else { return [] }
+        else { return nil }
         return rows.map(\.requester)
     }
 
     /// 수락된 친구들의 상대 id. 내가 보냈든 받았든 상관없이 모은다.
-    func acceptedFriendIDs(me: UUID) async -> [UUID] {
+    /// **실패하면 nil** — 빈 배열(친구 없음)과 구분한다.
+    func acceptedFriendIDs(me: UUID) async -> [UUID]? {
         let mine = me.uuidString
         guard var req = request(
             path: "/friendships",
             query: "or=(requester.eq.\(mine),addressee.eq.\(mine))"
                  + "&status=eq.accepted&select=requester,addressee"
-        ) else { return [] }
+        ) else { return nil }
         req.httpMethod = "GET"
 
         guard let (data, _) = try? await session.data(for: req),
               let rows = try? decoder.decode([FriendshipRow].self, from: data)
-        else { return [] }
+        else { return nil }
         // 나 아닌 쪽이 친구다.
         return rows.map { $0.requester == me ? $0.addressee : $0.requester }
     }
@@ -189,6 +193,63 @@ actor FriendService {
         req.httpMethod = "PATCH"
         req.httpBody = try? JSONSerialization.data(withJSONObject: ["status": "removed"])
         _ = try? await session.data(for: req)
+    }
+
+    // MARK: 현재 상태 (presence)
+
+    /// 내 현재 상태를 서버에 올린다(있으면 갱신). 친구 탭이 이걸 읽는다.
+    func pushPresence(_ p: Presence, for me: UUID) async {
+        guard var req = request(path: "/statuses") else { return }
+        req.httpMethod = "POST"
+        req.setValue("resolution=merge-duplicates", forHTTPHeaderField: "Prefer")
+
+        let body: [String: Any] = [
+            "user_id": me.uuidString,
+            "state": p.state.rawValue,
+            "day_key": p.dayKey,
+            "seconds": p.seconds,
+            "goal_minutes": p.goalMinutes,
+            "updated_at": ISO8601DateFormatter().string(from: p.updatedAt)
+        ]
+        req.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        _ = try? await session.data(for: req)
+    }
+
+    private struct StatusRow: Decodable {
+        let user_id: UUID
+        let state: String
+        let day_key: String
+        let seconds: Double
+        let goal_minutes: Int
+        let updated_at: Date
+    }
+
+    /// 친구들의 현재 상태를 가져온다. id → presence.
+    func presences(of ids: [UUID]) async -> [UUID: Presence] {
+        guard !ids.isEmpty else { return [:] }
+        let list = ids.map(\.uuidString).joined(separator: ",")
+        guard var req = request(
+            path: "/statuses",
+            query: "user_id=in.(\(list))"
+                 + "&select=user_id,state,day_key,seconds,goal_minutes,updated_at"
+        ) else { return [:] }
+        req.httpMethod = "GET"
+
+        guard let (data, _) = try? await session.data(for: req),
+              let rows = try? decoder.decode([StatusRow].self, from: data)
+        else { return [:] }
+
+        var out: [UUID: Presence] = [:]
+        for r in rows {
+            out[r.user_id] = Presence(
+                state: PresenceState(rawValue: r.state) ?? .idle,
+                dayKey: r.day_key,
+                seconds: r.seconds,
+                goalMinutes: r.goal_minutes,
+                updatedAt: r.updated_at
+            )
+        }
+        return out
     }
 
     // MARK: 이벤트 보내기
