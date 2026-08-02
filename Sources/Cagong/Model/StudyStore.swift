@@ -29,6 +29,17 @@ final class StudyStore: ObservableObject {
 
     private var ticker: AnyCancellable?
 
+    /// 공부하다 벌어진 일을 흘려보내는 창구.
+    ///
+    /// `@Published`가 아니라 `PassthroughSubject`인 게 중요하다 — 이벤트를 보낸다고
+    /// 화면 전체가 다시 평가되면 안 된다. 구독하는 쪽만 받는다.
+    let events = PassthroughSubject<StudyEvent, Never>()
+
+    /// 목표 돌파를 한 번만 알리기 위해 직전 진행률을 들고 있다.
+    /// 저장하지 않는다 — 앱을 다시 켜면 지금 값에서 다시 시작하므로,
+    /// 이미 넘긴 지점을 다시 알리지 않는다.
+    private var lastProgress: Double = 0
+
     private let fileURL: URL
 
     // MARK: 저장 스케줄
@@ -130,6 +141,8 @@ final class StudyStore: ObservableObject {
         data.days[measuringKey]?.closed = true
         data.days[measuringKey]?.endedAt = Date()
 
+        emit(.finished, at: Date(), on: measuringKey)
+
         // 마무리했으면 다시 오늘로 돌아온다.
         measuringKey = DateKey.today()
         flush()
@@ -154,16 +167,26 @@ final class StudyStore: ObservableObject {
         }
 
         let now = Date()
+        // 앉기 **전**에 세어야 처음인지 다시인지를 가른다.
+        let firstSitToday = (data.days[measuringKey]?.sessions.isEmpty ?? true)
+
         runStartedAt = now
         // 언제 앉았는지를 남긴다. 총합과 별개로 "몇 시에 시작했나"가 통계가 된다.
         data.days[measuringKey]?.sessions.append(StudySession(start: now))
         isRunning = true
 
+        // 이미 넘긴 목표 지점을 다시 알리지 않도록 기준선을 지금 값으로 잡는다.
+        lastProgress = goalProgress(for: measuringKey, at: now)
+        emit(firstSitToday ? .started : .resumed, at: now)
+
         // 이 타이머는 화면과 무관하다. 주기적으로 파일에 옮겨 적기만 한다.
         ticker = Timer.publish(every: Self.tickWriteInterval, on: .main, in: .common)
             .autoconnect()
             .sink { [weak self] _ in
-                MainActor.assumeIsolated { self?.scheduleWrite() }
+                MainActor.assumeIsolated {
+                    self?.checkGoalMilestones()
+                    self?.scheduleWrite()
+                }
             }
     }
 
@@ -172,6 +195,7 @@ final class StudyStore: ObservableObject {
     func pause() {
         guard isRunning else { return }
         let now = Date()
+        checkGoalMilestones(at: now)
         commit(at: now)
         closeOpenSession(at: now)
         isRunning = false
@@ -194,6 +218,34 @@ final class StudyStore: ObservableObject {
 
         guard data.days[measuringKey] != nil else { return }
         data.days[measuringKey]?.seconds += delta
+    }
+
+    // MARK: - 이벤트
+
+    /// 목표의 절반·전부를 **넘어서는 순간**에 한 번씩 알린다.
+    ///
+    /// 진행률은 줄어들지 않으므로 "직전 값보다 크고 임계값을 넘었다"로 판단하면
+    /// 중복이 없다. 앱을 다시 켰을 때 이미 넘어 있으면 기준선이 그 값이라 조용하다.
+    private func checkGoalMilestones(at now: Date = Date()) {
+        guard isRunning else { return }
+        let progress = goalProgress(for: measuringKey, at: now)
+        defer { lastProgress = max(lastProgress, progress) }
+
+        for (threshold, kind) in [(0.5, StudyEventKind.halfGoal), (1.0, .fullGoal)]
+        where lastProgress < threshold && progress >= threshold {
+            emit(kind, at: now)
+        }
+    }
+
+    private func emit(_ kind: StudyEventKind, at now: Date, on key: String? = nil) {
+        let target = key ?? measuringKey
+        events.send(StudyEvent(
+            kind: kind,
+            at: now,
+            dayKey: target,
+            seconds: seconds(for: target, at: now),
+            goalMinutes: goalMinutes(for: target)
+        ))
     }
 
     /// 열려 있는 구간을 닫는다. 여러 개가 열려 있을 일은 없지만 방어적으로 전부 닫는다.

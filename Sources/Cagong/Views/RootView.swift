@@ -86,6 +86,12 @@ struct RootView: View {
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
             store.flush()
         }
+        // 목표를 절반·전부 채운 순간을 알린다.
+        // 친구 기능이 붙으면 같은 이벤트가 서버로도 나간다.
+        .onReceive(store.events) { event in
+            Notifier.shared.post(event)
+        }
+        .onAppear { Notifier.shared.requestAuthorization() }
     }
 
     private let contentInset: CGFloat = 32

@@ -349,6 +349,81 @@ struct StoreTest {
 
         try? FileManager.default.removeItem(at: sFile)
 
+        // ── 이벤트 ───────────────────────────────────────────────
+        print("\n── 알릴 만한 순간에 이벤트가 나온다 ──")
+        let eFile = tempFile()
+        let ev = StudyStore(fileURL: eFile)
+        ev.beginDay(todos: [])
+        ev.setGoal(minutes: 30)          // 30분 = 1800초. 절반은 900초
+
+        var seen: [StudyEventKind] = []
+        let evWatch = ev.events.sink { seen.append($0.kind) }
+
+        ev.start()
+        check("처음 앉으면 started", seen == [.started])
+
+        ev.pause()
+        ev.start()
+        check("다시 앉으면 resumed", seen == [.started, .resumed])
+
+        // 목표 돌파는 진행률로 판단하므로 기록을 직접 밀어 넣어 흉내낸다.
+        ev.pause()
+        seen.removeAll()
+
+        var eFixture = ev.data
+        eFixture.days[today]?.seconds = 800      // 44% — 아직 절반 전
+        ev.loadFixture(eFixture)
+        ev.start()
+        check("절반 전에는 조용하다", !seen.contains(.halfGoal))
+
+        ev.pause()
+        eFixture = ev.data
+        eFixture.days[today]?.seconds = 950      // 52% — 절반을 넘었다
+        ev.loadFixture(eFixture)
+        seen.removeAll()
+        ev.start()                                // 시작하며 기준선을 잡는다
+        settle(0.05)
+        check("이미 넘긴 채로 시작하면 다시 안 알린다", !seen.contains(.halfGoal))
+
+        // 재는 도중 넘어가는 경우
+        ev.pause()
+        eFixture = ev.data
+        eFixture.days[today]?.seconds = 880      // 48.9%
+        ev.loadFixture(eFixture)
+        seen.removeAll()
+        ev.start()
+        eFixture = ev.data
+        eFixture.days[today]?.seconds = 1000     // 55% — 재는 중에 넘었다
+        let wasRunning = ev.isRunning
+        ev.loadFixture(eFixture, measuring: today)
+        check("측정 상태는 유지된다", wasRunning && ev.isRunning)
+
+        ev.pause()                                // pause가 돌파를 확인한다
+        check("재는 중 절반을 넘으면 halfGoal", seen.contains(.halfGoal))
+        check("목표를 안 채웠으면 fullGoal은 없다", !seen.contains(.fullGoal))
+
+        seen.removeAll()
+        eFixture = ev.data
+        eFixture.days[today]?.seconds = 2000     // 111% — 목표를 넘겼다
+        ev.loadFixture(eFixture)
+        ev.start(); ev.pause()
+        check("목표를 넘긴 뒤 시작하면 조용하다", seen.isEmpty || !seen.contains(.fullGoal))
+
+        seen.removeAll()
+        ev.endDay()
+        check("Zzz를 누르면 finished", seen.contains(.finished))
+
+        evWatch.cancel()
+        check("나에게 띄우는 건 목표 두 개뿐",
+              StudyEventKind.allCases.filter(\.notifiesSelf) == [.halfGoal, .fullGoal])
+        check("친구에게는 다섯 순간 모두 간다",
+              StudyEventKind.allCases.allSatisfy(\.notifiesFriends))
+        check("목표 절반·전부는 나와 친구가 둘 다 받는다",
+              [StudyEventKind.halfGoal, .fullGoal]
+                .allSatisfy { $0.notifiesSelf && $0.notifiesFriends })
+
+        try? FileManager.default.removeItem(at: eFile)
+
         // ── 월 합계 ─────────────────────────────────────────────
         print("\n── 월 합계 ──")
         let c = Calendar.current.dateComponents([.year, .month], from: Date())
