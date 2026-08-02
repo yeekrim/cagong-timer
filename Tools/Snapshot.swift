@@ -151,7 +151,13 @@ struct Snapshot {
                 TodoItem(text: "논문 초안 introduction", done: false)
             ],
             closed: false,
-            goalMinutes: 300
+            goalMinutes: 300,
+            // 하루를 세 번 쪼개 앉은 모양 — 상세 팝오버의 시간대 절 확인용
+            sessions: [
+                session(startHour: 9, minute: 14, lengthMinutes: 108),
+                session(startHour: 13, minute: 20, lengthMinutes: 110),
+                session(startHour: 17, minute: 56, lengthMinutes: 34)
+            ]
         )
 
         return AppData(
@@ -163,6 +169,13 @@ struct Snapshot {
             ),
             days: days
         )
+    }
+
+    /// 오늘 안의 특정 시각에서 시작하는 구간
+    static func session(startHour: Int, minute: Int, lengthMinutes: Int) -> StudySession {
+        let cal = Calendar.current
+        let start = cal.date(bySettingHour: startHour, minute: minute, second: 0, of: Date()) ?? Date()
+        return StudySession(start: start, end: start.addingTimeInterval(Double(lengthMinutes) * 60))
     }
 
     /// 아직 하루를 시작하지 않은 상태

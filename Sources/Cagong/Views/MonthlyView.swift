@@ -198,6 +198,9 @@ struct MonthlyView: View {
                                     date: day,
                                     seconds: store.seconds(for: key),
                                     todos: store.todos(for: key),
+                                    sessions: store.sessions(for: key),
+                                    endedAt: store.record(for: key)?.closed == true
+                                        ? store.record(for: key)?.endedAt : nil,
                                     inProgress: store.isMeasuring(key),
                                     theme: theme,
                                     onToggle: { store.toggleTodo($0, on: key) }
@@ -390,6 +393,10 @@ private struct DayDetail: View {
     let date: Date
     let seconds: TimeInterval
     let todos: [TodoItem]
+    /// 그날 앉았던 구간들. 언제 시작해 언제 접었는지.
+    let sessions: [StudySession]
+    /// Zzz를 누른 시각. 눌렀으면 이게 마지막 구간의 끝보다 정확하다.
+    let endedAt: Date?
     let inProgress: Bool
     let theme: Theme
     /// 체크는 지난 날에도 언제든 바꿀 수 있다. 글자는 못 고친다.
@@ -400,6 +407,12 @@ private struct DayDetail: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
+
+            if !sessions.isEmpty {
+                Divider().overlay(theme.p.cardStroke)
+                clockRow
+                sessionList
+            }
 
             if todos.isEmpty {
                 Text("적어둔 할 일이 없던 날이에요.")
@@ -445,6 +458,81 @@ private struct DayDetail: View {
         .padding(.horizontal, 18)
         .padding(.top, 18)
         .padding(.bottom, 14)
+    }
+
+    // MARK: 시간대
+
+    private var firstStart: Date? { sessions.map(\.start).min() }
+
+    private var lastEnd: Date? {
+        if let endedAt { return endedAt }
+        return sessions.compactMap(\.end).max()
+    }
+
+    /// 그날 몇 시에 앉아 몇 시에 접었는지. 총 시간만으로는 안 보이는 것이다.
+    private var clockRow: some View {
+        HStack(spacing: 0) {
+            stamp(label: "시작", value: firstStart.map(KoDate.hourMinute) ?? "—")
+
+            Rectangle()
+                .fill(theme.p.cardStroke.opacity(0.7))
+                .frame(width: 1, height: 24)
+
+            stamp(
+                label: inProgress ? "지금" : "마무리",
+                value: inProgress ? "재는 중" : (lastEnd.map(KoDate.hourMinute) ?? "—")
+            )
+        }
+        .padding(.vertical, 12)
+    }
+
+    private func stamp(label: String, value: String) -> some View {
+        VStack(spacing: 5) {
+            Text(label)
+                .font(Typo.body(10.5))
+                .foregroundStyle(theme.p.inkSoft.opacity(0.85))
+            Text(value)
+                .font(Typo.stamp(14))
+                .foregroundStyle(theme.p.ink)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    /// 구간이 여럿이면 어떻게 쪼개 앉았는지도 보여준다.
+    /// 길어지면 팝오버가 화면을 넘기므로 앞의 몇 개만 적고 나머지는 세어서 알린다.
+    private static let sessionLimit = 4
+
+    @ViewBuilder
+    private var sessionList: some View {
+        if sessions.count > 1 {
+            Divider().overlay(theme.p.cardStroke.opacity(0.6))
+
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(sessions.prefix(Self.sessionLimit)) { session in
+                    HStack(spacing: 8) {
+                        Text(KoDate.hourMinute(session.start)
+                             + " – "
+                             + (session.end.map(KoDate.hourMinute) ?? "…"))
+                            .font(Typo.label(11))
+                            .foregroundStyle(theme.p.inkSoft)
+
+                        Spacer(minLength: 8)
+
+                        Text(TimeFormat.human(session.length()))
+                            .font(Typo.body(11.5))
+                            .foregroundStyle(theme.p.inkSoft.opacity(0.85))
+                    }
+                }
+
+                if sessions.count > Self.sessionLimit {
+                    Text("외 \(sessions.count - Self.sessionLimit)번 더 앉았어요")
+                        .font(Typo.body(11))
+                        .foregroundStyle(theme.p.inkSoft.opacity(0.7))
+                }
+            }
+            .padding(.horizontal, 18)
+            .padding(.vertical, 10)
+        }
     }
 
     private var list: some View {

@@ -153,7 +153,10 @@ final class StudyStore: ObservableObject {
             data.days[measuringKey]?.closed = false
         }
 
-        runStartedAt = Date()
+        let now = Date()
+        runStartedAt = now
+        // 언제 앉았는지를 남긴다. 총합과 별개로 "몇 시에 시작했나"가 통계가 된다.
+        data.days[measuringKey]?.sessions.append(StudySession(start: now))
         isRunning = true
 
         // 이 타이머는 화면과 무관하다. 주기적으로 파일에 옮겨 적기만 한다.
@@ -168,7 +171,9 @@ final class StudyStore: ObservableObject {
     /// 노트북을 덮거나 앱을 강제 종료해도 이 시점까지는 지켜진다.
     func pause() {
         guard isRunning else { return }
-        commit()
+        let now = Date()
+        commit(at: now)
+        closeOpenSession(at: now)
         isRunning = false
         runStartedAt = nil
         ticker?.cancel()
@@ -189,6 +194,17 @@ final class StudyStore: ObservableObject {
 
         guard data.days[measuringKey] != nil else { return }
         data.days[measuringKey]?.seconds += delta
+    }
+
+    /// 열려 있는 구간을 닫는다. 여러 개가 열려 있을 일은 없지만 방어적으로 전부 닫는다.
+    private func closeOpenSession(at now: Date) {
+        guard var day = data.days[measuringKey] else { return }
+        guard day.sessions.contains(where: \.isOpen) else { return }
+
+        for i in day.sessions.indices where day.sessions[i].isOpen {
+            day.sessions[i].end = now
+        }
+        data.days[measuringKey] = day
     }
 
     // MARK: - 할 일
@@ -327,6 +343,14 @@ final class StudyStore: ObservableObject {
 
     func todos(for key: String) -> [TodoItem] { data.days[key]?.todos ?? [] }
 
+    func sessions(for key: String) -> [StudySession] { data.days[key]?.sessions ?? [] }
+
+    /// 그날 처음 앉은 시각
+    func firstStart(for key: String) -> Date? { data.days[key]?.firstStart }
+
+    /// 그날 마지막으로 손 뗀 시각. Zzz를 눌렀으면 그 시각.
+    func lastEnd(for key: String) -> Date? { data.days[key]?.lastEnd }
+
     /// 지금 재고 있는 날인지
     func isMeasuring(_ key: String) -> Bool { key == measuringKey && isRunning }
 
@@ -385,9 +409,17 @@ final class StudyStore: ObservableObject {
     /// `data`를 건드리지 않으므로 주기적인 저장이 화면을 다시 그리지 않는다.
     private func snapshotForWrite(at now: Date = Date()) -> AppData {
         var copy = data
-        if isRunning, copy.days[measuringKey] != nil {
-            copy.days[measuringKey]?.seconds = seconds(for: measuringKey, at: now)
+        guard isRunning, var day = copy.days[measuringKey] else { return copy }
+
+        day.seconds = seconds(for: measuringKey, at: now)
+
+        // 열린 구간은 지금 시각으로 닫아서 내보낸다.
+        // 파일에 `end: nil`이 남지 않으므로 앱이 갑자기 꺼져도 다음에 열 때 고칠 게 없다.
+        for i in day.sessions.indices where day.sessions[i].isOpen {
+            day.sessions[i].end = now
         }
+
+        copy.days[measuringKey] = day
         return copy
     }
 

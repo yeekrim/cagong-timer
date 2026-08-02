@@ -80,6 +80,44 @@ private struct LegacyActiveSession: Decodable {
     }
 }
 
+// MARK: - 공부 구간
+
+/// 한 번 앉아서 공부한 구간. 시작을 누른 때부터 멈출 때까지.
+///
+/// **총합(`DayRecord.seconds`)과 별개다.** 총합은 그대로 두고 여기에는 "언제"만 담는다.
+/// 총합을 이 배열에서 계산하도록 바꾸면 구간이 없는 옛 기록이 전부 0이 되고,
+/// 이미 정확하게 도는 저장 경로를 다시 만들어야 한다. 얻는 것보다 잃는 게 크다.
+struct StudySession: Codable, Sendable, Identifiable, Hashable {
+    var id: UUID
+    var start: Date
+    /// 아직 재는 중이면 nil. **파일에는 nil로 남지 않는다** —
+    /// 쓰기 직전에 그 시점으로 닫아서 내보낸다(`StudyStore.snapshotForWrite`).
+    /// 그래서 앱이 갑자기 꺼져도 다음에 열 때 고칠 게 없다.
+    var end: Date?
+
+    init(id: UUID = UUID(), start: Date, end: Date? = nil) {
+        self.id = id
+        self.start = start
+        self.end = end
+    }
+
+    enum CodingKeys: String, CodingKey { case id, start, end }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        start = try c.decodeIfPresent(Date.self, forKey: .start) ?? Date()
+        end = try c.decodeIfPresent(Date.self, forKey: .end)
+    }
+
+    /// 재는 중이면 지금까지의 길이
+    func length(at now: Date = Date()) -> TimeInterval {
+        max(0, (end ?? now).timeIntervalSince(start))
+    }
+
+    var isOpen: Bool { end == nil }
+}
+
 // MARK: - 하루 기록
 
 /// 하루치 기록. **모든 날이 이 타입 하나로 동등하다.**
@@ -92,6 +130,8 @@ struct DayRecord: Codable, Sendable {
     /// 하루를 마무리했다는 표시. **잠그지 않는다** — 다시 측정할 수 있다.
     var closed: Bool
     var endedAt: Date?
+    /// 그날 앉았던 구간들. 언제 시작해 언제 접었는지가 여기 남는다.
+    var sessions: [StudySession]
     /// 그날만의 목표. nil이면 마지막으로 쓴 기본 목표를 따른다.
     ///
     /// 목표는 날마다 다르다 — 시험 기간과 주말이 같을 리 없다. 그래서 설정에
@@ -102,15 +142,19 @@ struct DayRecord: Codable, Sendable {
          todos: [TodoItem] = [],
          closed: Bool = false,
          endedAt: Date? = nil,
-         goalMinutes: Int? = nil) {
+         goalMinutes: Int? = nil,
+         sessions: [StudySession] = []) {
         self.seconds = seconds
         self.todos = todos
         self.closed = closed
         self.endedAt = endedAt
         self.goalMinutes = goalMinutes
+        self.sessions = sessions
     }
 
-    enum CodingKeys: String, CodingKey { case seconds, todos, closed, endedAt, goalMinutes }
+    enum CodingKeys: String, CodingKey {
+        case seconds, todos, closed, endedAt, goalMinutes, sessions
+    }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -120,9 +164,21 @@ struct DayRecord: Codable, Sendable {
         closed = try c.decodeIfPresent(Bool.self, forKey: .closed) ?? true
         endedAt = try c.decodeIfPresent(Date.self, forKey: .endedAt)
         goalMinutes = try c.decodeIfPresent(Int.self, forKey: .goalMinutes)
+        // 구간 기록은 나중에 붙었다. 옛 기록에는 없고, 없는 채로 두면 된다 —
+        // 총합은 `seconds`에 그대로 살아 있다.
+        sessions = try c.decodeIfPresent([StudySession].self, forKey: .sessions) ?? []
     }
 
     var doneCount: Int { todos.filter(\.done).count }
+
+    /// 그날 처음 시작한 시각
+    var firstStart: Date? { sessions.map(\.start).min() }
+
+    /// 그날 마지막으로 손 뗀 시각. Zzz를 눌렀으면 그 시각이 더 정확하다.
+    var lastEnd: Date? {
+        if let endedAt, closed { return endedAt }
+        return sessions.compactMap(\.end).max()
+    }
 }
 
 // MARK: - 설정
@@ -231,6 +287,7 @@ enum KoDate {
     private static let shortFormatter = formatter("M월 d일")
     private static let dayFormatter = formatter("M월 d일 (E)")
     private static let clockFormatter = formatter("HH:mm:ss")
+    private static let hourMinuteFormatter = formatter("HH:mm")
 
     /// "7월 30일 목요일"
     static func full(_ date: Date) -> String { fullFormatter.string(from: date) }
@@ -243,6 +300,9 @@ enum KoDate {
 
     /// "14:32:07"
     static func clock(_ date: Date) -> String { clockFormatter.string(from: date) }
+
+    /// "14:32" — 기록을 되돌아볼 때는 초까지 필요 없다.
+    static func hourMinute(_ date: Date) -> String { hourMinuteFormatter.string(from: date) }
 
     static let weekdaySymbols = ["일", "월", "화", "수", "목", "금", "토"]
 }

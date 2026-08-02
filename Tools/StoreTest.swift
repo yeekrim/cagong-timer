@@ -287,6 +287,68 @@ struct StoreTest {
         r.loadFixture(rNext, measuring: "2099-01-02")
         check("다음 날엔 안 따라온다", r.routineDrafts(for: "2099-01-02").isEmpty)
 
+        // ── 공부 구간 기록 ────────────────────────────────────────
+        print("\n── 언제 앉아 언제 접었는지 남는다 ──")
+        let sFile = tempFile()
+        let ss = StudyStore(fileURL: sFile)
+        ss.beginDay(todos: [])
+        check("시작 전에는 구간이 없다", ss.sessions(for: today).isEmpty)
+        check("시작 시각도 없다", ss.firstStart(for: today) == nil)
+
+        let t0 = Date()
+        ss.start()
+        check("시작하면 구간이 하나 열린다", ss.sessions(for: today).count == 1)
+        check("열린 구간은 끝이 비어 있다", ss.sessions(for: today)[0].isOpen)
+        check("시작 시각이 기록됐다",
+              abs((ss.firstStart(for: today) ?? .distantPast).timeIntervalSince(t0)) < 0.5)
+
+        // 재는 도중 파일에는 열린 구간이 남지 않아야 한다.
+        // 앱이 갑자기 꺼져도 다음에 열 때 고칠 게 없어야 하니까.
+        settle(0.05)
+        let openOnDisk = onDisk(sFile)?.days[today]?.sessions.contains { $0.isOpen } ?? true
+        check("파일에는 열린 구간이 남지 않는다", !openOnDisk)
+
+        settle(1.1)
+        ss.pause()
+        check("멈추면 구간이 닫힌다", ss.sessions(for: today)[0].end != nil)
+        check("구간 길이가 총합과 맞는다",
+              abs(ss.sessions(for: today)[0].length() - ss.seconds(for: today)) < 0.1)
+
+        // 두 번째로 앉으면 구간이 하나 더 생긴다.
+        ss.start(); settle(1.1); ss.pause()
+        check("다시 앉으면 구간이 늘어난다", ss.sessions(for: today).count == 2)
+        check("시작 시각은 처음 앉은 때 그대로",
+              abs((ss.firstStart(for: today) ?? .distantPast).timeIntervalSince(t0)) < 0.5)
+        check("총합은 두 구간의 합",
+              abs(ss.seconds(for: today)
+                  - ss.sessions(for: today).reduce(0) { $0 + $1.length() }) < 0.1)
+
+        // Zzz를 누른 시각이 마무리 시각이 된다.
+        ss.start(); settle(0.3)
+        let beforeEnd = Date()
+        ss.endDay()
+        check("Zzz 시각이 마무리로 남는다",
+              abs((ss.lastEnd(for: today) ?? .distantPast).timeIntervalSince(beforeEnd)) < 0.5)
+        check("Zzz를 눌러도 구간은 그대로 남는다", ss.sessions(for: today).count == 3)
+
+        // 껐다 켜도 구간이 살아 있다.
+        let ss2 = StudyStore(fileURL: sFile)
+        check("구간이 복구된다", ss2.sessions(for: today).count == 3)
+        check("복구된 구간은 전부 닫혀 있다",
+              !ss2.sessions(for: today).contains { $0.isOpen })
+
+        // 옛 기록에는 구간이 없지만 총합은 살아 있다.
+        var old = DayRecord(seconds: 7200, closed: true)
+        old.endedAt = Date()
+        var sFixture = ss2.data
+        sFixture.days["2019-03-03"] = old
+        ss2.loadFixture(sFixture)
+        check("구간 없는 옛 기록도 총합은 그대로",
+              abs(ss2.seconds(for: "2019-03-03") - 7200) < 0.05)
+        check("구간이 없으면 시작 시각도 없다", ss2.firstStart(for: "2019-03-03") == nil)
+
+        try? FileManager.default.removeItem(at: sFile)
+
         // ── 월 합계 ─────────────────────────────────────────────
         print("\n── 월 합계 ──")
         let c = Calendar.current.dateComponents([.year, .month], from: Date())
