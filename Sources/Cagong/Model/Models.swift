@@ -225,6 +225,56 @@ struct AppSettings: Codable, Sendable {
     }
 }
 
+// MARK: - 내 신원 · 친구
+
+/// 나를 가리키는 신원. **계정도 비밀번호도 없다.**
+///
+/// 설치할 때 기기마다 UUID를 하나 만들어 그게 곧 나다. 친구는 내 초대 코드로만
+/// 나를 찾을 수 있어서, 이름이 겹쳐도 엉뚱한 사람이 걸리지 않는다.
+struct Profile: Codable, Sendable {
+    /// 서버에서 나를 식별하는 열쇠. 한 번 만들면 안 바뀐다.
+    var id: UUID
+    /// 친구에게 보이는 이름. 비워두면 친구 목록에서 "이름 없음"으로 뜬다.
+    var name: String
+    /// 친구가 나를 등록할 때 부르는 코드. 헷갈리는 글자(0/O, 1/I/L)는 뺀다.
+    var code: String
+
+    init(id: UUID = UUID(), name: String = "", code: String = Profile.newCode()) {
+        self.id = id
+        self.name = name
+        self.code = code
+    }
+
+    enum CodingKeys: String, CodingKey { case id, name, code }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        // 없으면 지금 만든다 — 신원은 이 파일을 처음 읽는 순간 태어난다.
+        id = try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        name = try c.decodeIfPresent(String.self, forKey: .name) ?? ""
+        code = try c.decodeIfPresent(String.self, forKey: .code) ?? Profile.newCode()
+    }
+
+    /// 6자리 초대 코드. 헷갈리는 글자를 빼서 불러주기 쉽게 한다.
+    static func newCode() -> String {
+        let alphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"   // 0 O 1 I L 제외
+        return String((0..<6).map { _ in alphabet.randomElement()! })
+    }
+}
+
+/// 등록해 둔 친구 한 명. 서버가 진실이고, 이건 오프라인에서도 이름을 띄우려는 캐시다.
+struct Friend: Codable, Sendable, Identifiable, Hashable {
+    var id: UUID          // 친구의 Profile.id
+    var name: String
+    var code: String
+
+    init(id: UUID, name: String, code: String) {
+        self.id = id
+        self.name = name
+        self.code = code
+    }
+}
+
 // MARK: - 저장 파일 전체
 
 /// 저장 파일은 통째로 값 타입이다.
@@ -233,22 +283,35 @@ struct AppData: Codable, Sendable {
     var version: Int
     var settings: AppSettings
     var days: [String: DayRecord]
+    /// 나. 파일을 처음 읽는 순간 만들어진다.
+    var profile: Profile
+    /// 등록한 친구들의 캐시.
+    var friends: [Friend]
 
     init(version: Int = 2,
          settings: AppSettings = AppSettings(),
-         days: [String: DayRecord] = [:]) {
+         days: [String: DayRecord] = [:],
+         profile: Profile = Profile(),
+         friends: [Friend] = []) {
         self.version = version
         self.settings = settings
         self.days = days
+        self.profile = profile
+        self.friends = friends
     }
 
-    enum CodingKeys: String, CodingKey { case version, settings, days, active }
+    enum CodingKeys: String, CodingKey {
+        case version, settings, days, active, profile, friends
+    }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         version = try c.decodeIfPresent(Int.self, forKey: .version) ?? 1
         settings = try c.decodeIfPresent(AppSettings.self, forKey: .settings) ?? AppSettings()
         days = try c.decodeIfPresent([String: DayRecord].self, forKey: .days) ?? [:]
+        // 신원은 나중에 붙었다. 옛 파일에는 없으므로 여기서 새로 만든다.
+        profile = try c.decodeIfPresent(Profile.self, forKey: .profile) ?? Profile()
+        friends = try c.decodeIfPresent([Friend].self, forKey: .friends) ?? []
 
         // 옛 형식 이관: 따로 있던 "진행 중인 하루"를 그날 기록으로 접어 넣는다.
         // try? 가 옵셔널을 한 겹 벗기므로 여기서 바로 값이 나온다.
@@ -270,6 +333,8 @@ struct AppData: Codable, Sendable {
         try c.encode(version, forKey: .version)
         try c.encode(settings, forKey: .settings)
         try c.encode(days, forKey: .days)
+        try c.encode(profile, forKey: .profile)
+        try c.encode(friends, forKey: .friends)
     }
 }
 

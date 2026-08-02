@@ -424,6 +424,52 @@ struct StoreTest {
 
         try? FileManager.default.removeItem(at: eFile)
 
+        // ── 나 · 친구 ─────────────────────────────────────────────
+        print("\n── 신원과 친구 ──")
+        let fFile = tempFile()
+        let fs = StudyStore(fileURL: fFile)
+
+        let code = fs.profile.code
+        check("초대 코드는 6자리", code.count == 6)
+        check("헷갈리는 글자가 없다",
+              code.allSatisfy { "ABCDEFGHJKMNPQRSTUVWXYZ23456789".contains($0) })
+        check("새 코드는 매번 다르다", Profile.newCode() != Profile.newCode())
+
+        let myID = fs.profile.id
+        fs.setMyName("나")
+        check("이름이 저장된다", fs.profile.name == "나")
+
+        let bob = Friend(id: UUID(), name: "밥", code: "ABCDEF")
+        fs.addFriend(bob)
+        check("친구가 추가된다", fs.friends.count == 1)
+        check("친구 id 목록", fs.friendIDs == [bob.id])
+
+        fs.addFriend(Friend(id: bob.id, name: "밥 (개명)", code: "ABCDEF"))
+        check("같은 친구는 중복 안 되고 이름만 갱신", fs.friends.count == 1)
+        check("갱신된 이름", fs.friend(bob.id)?.name == "밥 (개명)")
+
+        fs.addFriend(Friend(id: myID, name: "나 자신", code: code))
+        check("나 자신은 친구로 못 넣는다", fs.friends.count == 1)
+
+        fs.removeFriend(bob.id)
+        check("친구가 삭제된다", fs.friends.isEmpty)
+
+        // 껐다 켜도 신원이 유지된다. (저장은 비동기라 한 번 재운다)
+        settle(0.05)
+        let fs2 = StudyStore(fileURL: fFile)
+        check("id가 유지된다", fs2.profile.id == myID)
+        check("코드가 유지된다", fs2.profile.code == code)
+        check("이름이 유지된다", fs2.profile.name == "나")
+
+        // 옛 파일에는 신원이 없다. 읽는 순간 새로 태어난다.
+        let legacyID = StudyStore(fileURL: tempFile()).profile
+        check("새 파일은 신원을 만들어 준다", !legacyID.code.isEmpty)
+
+        // 친구에게 갈 이벤트는 서버로 보낼 때 걸러진다(FriendService.send가 확인).
+        check("친구 전송 대상은 다섯 순간 전부", StudyEventKind.allCases.allSatisfy(\.notifiesFriends))
+
+        try? FileManager.default.removeItem(at: fFile)
+
         // ── 월 합계 ─────────────────────────────────────────────
         print("\n── 월 합계 ──")
         let c = Calendar.current.dateComponents([.year, .month], from: Date())

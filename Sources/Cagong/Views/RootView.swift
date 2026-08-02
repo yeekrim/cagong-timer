@@ -5,6 +5,7 @@ import AppKit
 /// 앱 셸. 배경 장면 위에 상단 바와 본문을 얹는다.
 struct RootView: View {
     @EnvironmentObject private var store: StudyStore
+    @EnvironmentObject private var friendSync: FriendSync
     @ObservedObject private var library = PhotoLibrary.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -76,6 +77,7 @@ struct RootView: View {
         .sheet(isPresented: $showSettings) {
             SettingsView(theme: theme)
                 .environmentObject(store)
+                .environmentObject(friendSync)
         }
         // 종료 직전 마지막 몇 초를 흘리지 않는다.
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
@@ -91,7 +93,10 @@ struct RootView: View {
         .onReceive(store.events) { event in
             Notifier.shared.post(event)
         }
-        .onAppear { Notifier.shared.requestAuthorization() }
+        .onAppear {
+            Notifier.shared.requestAuthorization()
+            friendSync.start()
+        }
     }
 
     private let contentInset: CGFloat = 32

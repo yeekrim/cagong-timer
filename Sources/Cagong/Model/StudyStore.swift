@@ -373,6 +373,37 @@ final class StudyStore: ObservableObject {
         setPhotoScene(next.id)
     }
 
+    // MARK: - 나 · 친구
+
+    var profile: Profile { data.profile }
+    var friends: [Friend] { data.friends }
+    var friendIDs: [UUID] { data.friends.map(\.id) }
+
+    func setMyName(_ name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed != data.profile.name else { return }
+        data.profile.name = trimmed
+        save()
+    }
+
+    /// 친구를 등록한다. 이미 있으면(같은 id) 이름만 갱신한다. 나 자신은 못 넣는다.
+    func addFriend(_ friend: Friend) {
+        guard friend.id != data.profile.id else { return }
+        if let idx = data.friends.firstIndex(where: { $0.id == friend.id }) {
+            data.friends[idx] = friend
+        } else {
+            data.friends.append(friend)
+        }
+        save()
+    }
+
+    func removeFriend(_ id: UUID) {
+        data.friends.removeAll { $0.id == id }
+        save()
+    }
+
+    func friend(_ id: UUID) -> Friend? { data.friends.first { $0.id == id } }
+
     // MARK: - 조회
 
     func record(for key: String) -> DayRecord? { data.days[key] }

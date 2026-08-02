@@ -72,6 +72,7 @@ struct Snapshot {
 
         let view = RootView(initialTab: tab)
             .environmentObject(store)
+            .environmentObject(FriendSync(store: store))
             .frame(width: 1000, height: 730)
 
         write(view, name: name, to: dir)
@@ -83,12 +84,14 @@ struct Snapshot {
             theme: theme.id,
             scene: PhotoLibrary.shared.scenes.first?.id
         ))
+        let sync = FriendSync(store: store)
 
         // ScrollView는 오프스크린 렌더러에서 본문을 그리지 않으므로
         // 스크롤 컨테이너 없는 SettingsContent를 직접 그려 검수한다.
         for tab in SettingsTab.allCases {
             let view = SettingsContent(theme: theme, tab: tab)
                 .environmentObject(store)
+                .environmentObject(sync)
                 .frame(width: 470)
                 .background(theme.p.card)
 

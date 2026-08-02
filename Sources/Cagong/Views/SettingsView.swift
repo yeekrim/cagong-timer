@@ -13,6 +13,7 @@ import AppKit
 enum SettingsTab: String, CaseIterable, Identifiable {
     case drink
     case theme
+    case friends
 
     var id: String { rawValue }
 
@@ -20,6 +21,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         switch self {
         case .drink: return "음료"
         case .theme: return "테마"
+        case .friends: return "친구"
         }
     }
 }
@@ -134,6 +136,9 @@ struct SettingsContent: View {
                 if store.settings.themeID == .photoCafe {
                     photoSection
                 }
+
+            case .friends:
+                FriendsSection(theme: theme)
             }
 
             // MARK: 확장 지점 — 사운드(BGM)

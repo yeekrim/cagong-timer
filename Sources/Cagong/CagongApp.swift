@@ -22,12 +22,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 @main
 struct CagongApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @StateObject private var store = StudyStore()
+    @StateObject private var store: StudyStore
+    /// 친구 동기화. store 하나에 묶여 앱 수명 내내 산다.
+    @StateObject private var friendSync: FriendSync
+
+    init() {
+        let store = StudyStore()
+        _store = StateObject(wrappedValue: store)
+        _friendSync = StateObject(wrappedValue: FriendSync(store: store))
+    }
 
     var body: some Scene {
         WindowGroup {
             RootView()
                 .environmentObject(store)
+                .environmentObject(friendSync)
         }
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentMinSize)
