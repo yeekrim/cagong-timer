@@ -121,6 +121,14 @@ struct StudySession: Codable, Sendable, Identifiable, Hashable {
     }
 
     var isOpen: Bool { end == nil }
+
+    /// 열려 있으면 `now`로 닫은 복사본. 이미 닫힌 구간은 그대로 돌려준다.
+    func closed(at now: Date) -> StudySession {
+        guard isOpen else { return self }
+        var copy = self
+        copy.end = now
+        return copy
+    }
 }
 
 // MARK: - 하루 기록

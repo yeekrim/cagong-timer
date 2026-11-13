@@ -260,9 +260,7 @@ final class StudyStore: ObservableObject {
         guard var day = data.days[measuringKey] else { return }
         guard day.sessions.contains(where: \.isOpen) else { return }
 
-        for i in day.sessions.indices where day.sessions[i].isOpen {
-            day.sessions[i].end = now
-        }
+        day.sessions = day.sessions.map { $0.closed(at: now) }
         data.days[measuringKey] = day
     }
 
@@ -463,12 +461,7 @@ final class StudyStore: ObservableObject {
 
     /// 열린 구간은 지금 시각으로 닫아서 내보낸다 — 파일에 쓸 때와 같은 규칙.
     private func sessionsForUpload(_ key: String, at now: Date) -> [StudySession] {
-        (data.days[key]?.sessions ?? []).map { s in
-            guard s.isOpen else { return s }
-            var closed = s
-            closed.end = now
-            return closed
-        }
+        (data.days[key]?.sessions ?? []).map { $0.closed(at: now) }
     }
 
     /// 지금 내 상태. 친구에게 보여줄 presence를 만든다.
@@ -592,9 +585,7 @@ final class StudyStore: ObservableObject {
 
         // 열린 구간은 지금 시각으로 닫아서 내보낸다.
         // 파일에 `end: nil`이 남지 않으므로 앱이 갑자기 꺼져도 다음에 열 때 고칠 게 없다.
-        for i in day.sessions.indices where day.sessions[i].isOpen {
-            day.sessions[i].end = now
-        }
+        day.sessions = day.sessions.map { $0.closed(at: now) }
 
         copy.days[measuringKey] = day
         return copy
