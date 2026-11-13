@@ -138,58 +138,9 @@ struct TimerView: View {
         }
         .buttonStyle(PressableStyle())
         .popover(isPresented: $pickingDate, arrowEdge: .bottom) {
-            datePicker
+            MeasuringDatePicker(store: store, theme: theme) { pickingDate = false }
         }
         .help("기록할 날짜를 고릅니다")
-    }
-
-    /// 오늘과 어제만. 그저께부터는 아예 선택지에 없다.
-    private var datePicker: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ForEach([DateKey.today(), DateKey.yesterday()], id: \.self) { key in
-                let isOn = key == store.measuringKey
-                let date = DateKey.date(from: key) ?? Date()
-
-                Button {
-                    withAnimation(Motion.screen) { store.setMeasuringDate(key) }
-                    pickingDate = false
-                } label: {
-                    HStack(spacing: 10) {
-                        Image(systemName: isOn ? "largecircle.fill.circle" : "circle")
-                            .font(.system(size: 12))
-                            .foregroundStyle(isOn ? theme.p.accent : theme.p.inkSoft.opacity(0.5))
-
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(key == DateKey.today() ? "오늘" : "어제")
-                                .font(Typo.bodyStrong(13))
-                                .foregroundStyle(theme.p.ink)
-                            Text(KoDate.dayWithWeekday(date))
-                                .font(Typo.body(11.5))
-                                .foregroundStyle(theme.p.inkSoft)
-                        }
-
-                        Spacer(minLength: 20)
-
-                        Text(TimeFormat.human(store.seconds(for: key)))
-                            .font(Typo.stamp(12))
-                            .foregroundStyle(theme.p.inkSoft)
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 11)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(PressableStyle(scale: 0.98))
-            }
-
-            Text("그제부터는 고칠 수 없어요.")
-                .font(Typo.body(11))
-                .foregroundStyle(theme.p.inkSoft.opacity(0.8))
-                .padding(.horizontal, 16)
-                .padding(.top, 4)
-                .padding(.bottom, 12)
-        }
-        .frame(width: 250)
-        .background(theme.p.card)
     }
 
     private var measuringDate: Date {
@@ -306,7 +257,9 @@ struct TimerView: View {
             }
         }
         .buttonStyle(PressableStyle(scale: 0.97))
-        .popover(isPresented: $pickingGoal, arrowEdge: .bottom) { goalPicker }
+        .popover(isPresented: $pickingGoal, arrowEdge: .bottom) {
+            GoalPicker(store: store, theme: theme)
+        }
         .help("이 날의 목표를 정합니다")
     }
 
@@ -315,63 +268,6 @@ struct TimerView: View {
         let text = TimeFormat.goal(minutes: goal)
         if progress >= 1 { return "목표 \(text) 달성" }
         return "목표 \(text) 중 \(Int(progress * 100))%"
-    }
-
-    /// 그날치 목표만 바꾼다. 다른 날은 건드리지 않는다.
-    private var goalPicker: some View {
-        let minutes = store.goalMinutes(for: store.measuringKey)
-
-        return VStack(alignment: .leading, spacing: 14) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text("\(KoDate.dayWithWeekday(measuringDate)) 목표")
-                    .font(Typo.bodyStrong(13))
-                    .foregroundStyle(theme.p.ink)
-                Text("이 날에만 적용됩니다")
-                    .font(Typo.body(11))
-                    .foregroundStyle(theme.p.inkSoft.opacity(0.8))
-            }
-
-            HStack {
-                Text(TimeFormat.goal(minutes: minutes))
-                    .font(Typo.title(19))
-                    .foregroundStyle(theme.p.ink)
-                    .contentTransition(.numericText())
-                    .animation(Motion.digit, value: minutes)
-
-                Spacer()
-
-                HStack(spacing: 6) {
-                    goalStep("minus", to: minutes - 30)
-                    goalStep("plus", to: minutes + 30)
-                }
-            }
-
-            Slider(
-                value: Binding(
-                    get: { Double(minutes) },
-                    set: { store.setGoal(minutes: Int(($0 / 30).rounded()) * 30) }
-                ),
-                in: 30...720,
-                step: 30
-            )
-            .tint(theme.p.accent)
-        }
-        .padding(18)
-        .frame(width: 288)
-        .background(theme.p.card)
-    }
-
-    private func goalStep(_ icon: String, to minutes: Int) -> some View {
-        Button {
-            withAnimation(Motion.button) { store.setGoal(minutes: minutes) }
-        } label: {
-            Image(systemName: icon)
-                .font(.system(size: 10, weight: .bold))
-                .foregroundStyle(theme.p.inkSoft)
-                .frame(width: 25, height: 25)
-                .background(Circle().fill(theme.p.ink.opacity(0.07)))
-        }
-        .buttonStyle(PressableStyle())
     }
 
     private var startButton: some View {
