@@ -241,10 +241,6 @@ struct MonthlyView: View {
         return TimeFormat.human(monthTotal / Double(studiedDays))
     }
 
-    private var todayProgress: Double {
-        store.goalProgress(for: DateKey.today())
-    }
-
     /// 1일 앞의 빈 칸을 채우고 7개씩 끊는다.
     private var weeks: [[Date?]] { MonthGrid.weeks(year: year, month: month) }
 

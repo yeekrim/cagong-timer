@@ -459,23 +459,15 @@ enum KoDate {
         return f
     }
 
-    private static let fullFormatter = formatter("M월 d일 EEEE")
     private static let shortFormatter = formatter("M월 d일")
     private static let dayFormatter = formatter("M월 d일 (E)")
-    private static let clockFormatter = formatter("HH:mm:ss")
     private static let hourMinuteFormatter = formatter("HH:mm")
-
-    /// "7월 30일 목요일"
-    static func full(_ date: Date) -> String { fullFormatter.string(from: date) }
 
     /// "7월 30일"
     static func short(_ date: Date) -> String { shortFormatter.string(from: date) }
 
     /// "7월 31일 (금)"
     static func dayWithWeekday(_ date: Date) -> String { dayFormatter.string(from: date) }
-
-    /// "14:32:07"
-    static func clock(_ date: Date) -> String { clockFormatter.string(from: date) }
 
     /// "14:32" — 기록을 되돌아볼 때는 초까지 필요 없다.
     static func hourMinute(_ date: Date) -> String { hourMinuteFormatter.string(from: date) }

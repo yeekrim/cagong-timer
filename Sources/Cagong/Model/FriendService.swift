@@ -29,12 +29,6 @@ actor FriendService {
         return d
     }
 
-    private var encoder: JSONEncoder {
-        let e = JSONEncoder()
-        e.dateEncodingStrategy = .iso8601
-        return e
-    }
-
     // MARK: 요청 만들기
 
     private func request(path: String, query: String = "") -> URLRequest? {

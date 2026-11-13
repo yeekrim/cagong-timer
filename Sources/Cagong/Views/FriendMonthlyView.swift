@@ -11,7 +11,6 @@ struct FriendMonthlyView: View {
     let theme: Theme
 
     @State private var stats: [String: DayStat] = [:]
-    @State private var loaded = false
     @State private var year: Int
     @State private var month: Int
     @State private var selectedKey: String?
@@ -215,7 +214,6 @@ struct FriendMonthlyView: View {
     private func load() async {
         guard let fetched = await friendSync.loadMonth(of: friend) else { return }
         stats = Dictionary(fetched.map { ($0.dayKey, $0) }, uniquingKeysWith: { a, _ in a })
-        loaded = true
     }
 }
 

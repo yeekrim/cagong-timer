@@ -50,7 +50,6 @@ final class StudyStore: ObservableObject {
     /// 인코딩과 디스크 쓰기는 여기서 한다. 직렬 큐라 순서가 뒤집히지 않는다.
     private let ioQueue = DispatchQueue(label: "com.yeekrim.cagong.save", qos: .utility)
     private var pendingWrite: DispatchWorkItem?
-    private var lastWrite = Date.distantPast
 
     /// 측정 중 tick을 디스크에 반영하는 간격. 사용자 행동에는 적용되지 않는다.
     private static let tickWriteInterval: TimeInterval = 5
@@ -91,9 +90,6 @@ final class StudyStore: ObservableObject {
     var settings: AppSettings { data.settings }
     var theme: Theme { Theme.by(settings.themeID) }
     var drink: Drink { Drink.by(settings.drinkID) }
-
-    /// 재고 있는 날의 기록
-    var measuringDay: DayRecord? { data.days[measuringKey] }
 
     /// 재고 있는 날이 오늘이 아닌지. 화면에 눈에 띄게 알려야 한다.
     var isMeasuringPastDay: Bool { measuringKey != DateKey.today() }
@@ -607,7 +603,6 @@ final class StudyStore: ObservableObject {
     /// 메인 스레드에서는 값만 복사하고(구조체라 싸다) 인코딩·쓰기는 큐로 넘긴다.
     private func handOffWrite() {
         pendingWrite = nil
-        lastWrite = Date()
 
         let snapshot = snapshotForWrite()
         let url = fileURL
@@ -622,7 +617,6 @@ final class StudyStore: ObservableObject {
     func flush() {
         pendingWrite?.cancel()
         pendingWrite = nil
-        lastWrite = Date()
 
         let snapshot = snapshotForWrite()
         let url = fileURL
