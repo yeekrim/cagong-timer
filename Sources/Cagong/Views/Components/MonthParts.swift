@@ -38,6 +38,31 @@ struct MonthCursor: Equatable {
     }
 }
 
+// MARK: - 달력 격자 계산
+
+/// 월 달력의 주 배열을 만든다. 내 먼슬리와 친구 먼슬리가 같이 쓴다.
+enum MonthGrid {
+    /// 1일 앞의 빈 칸을 채우고 7개씩 끊는다. 빈 칸은 nil.
+    static func weeks(year: Int, month: Int) -> [[Date?]] {
+        let cal = Calendar.current
+        guard
+            let first = cal.date(from: DateComponents(year: year, month: month, day: 1)),
+            let range = cal.range(of: .day, in: .month, for: first)
+        else { return [] }
+
+        let leading = cal.component(.weekday, from: first) - 1
+        var cells: [Date?] = Array(repeating: nil, count: leading)
+        for d in range {
+            cells.append(cal.date(from: DateComponents(year: year, month: month, day: d)))
+        }
+        while cells.count % 7 != 0 { cells.append(nil) }
+
+        return stride(from: 0, to: cells.count, by: 7).map {
+            Array(cells[$0..<min($0 + 7, cells.count)])
+        }
+    }
+}
+
 // MARK: - 머리
 
 /// 이전·다음 달 버튼.
