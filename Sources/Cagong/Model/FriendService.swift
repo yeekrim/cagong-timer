@@ -23,11 +23,14 @@ actor FriendService {
     /// 친구 이벤트를 어디까지 봤는지. 이 시각 이후 것만 새로 가져온다.
     private var lastSeen = Date()
 
-    private var decoder: JSONDecoder {
+    private let decoder: JSONDecoder = {
         let d = JSONDecoder()
         d.dateDecodingStrategy = .iso8601
         return d
-    }
+    }()
+
+    /// 서버에 보내는 시각 표기. 매번 새로 만들 필요가 없다.
+    private let iso = ISO8601DateFormatter()
 
     // MARK: 요청 만들기
 
@@ -44,21 +47,42 @@ actor FriendService {
         return req
     }
 
+    /// GET 해서 디코드한다. 설정이 없거나, 요청·디코드가 실패하면 nil.
+    /// 호출하는 쪽이 nil을 "실패"로 볼지 "빈 값"으로 볼지 정한다.
+    private func get<T: Decodable>(_ type: T.Type, path: String, query: String) async -> T? {
+        guard var req = request(path: path, query: query) else { return nil }
+        req.httpMethod = "GET"
+        guard let (data, _) = try? await session.data(for: req) else { return nil }
+        return try? decoder.decode(type, from: data)
+    }
+
+    /// JSON 본문을 실어 보낸다(POST·PATCH). 응답은 보지 않는다.
+    private func write(
+        _ method: String, path: String, query: String = "",
+        prefer: String? = nil, body: Any
+    ) async {
+        guard var req = request(path: path, query: query) else { return }
+        req.httpMethod = method
+        if let prefer { req.setValue(prefer, forHTTPHeaderField: "Prefer") }
+        req.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        _ = try? await session.data(for: req)
+    }
+
+    /// PostgREST `in.(...)` 필터에 넣을 id 목록. "a,b,c"
+    private func idList(_ ids: [UUID]) -> String {
+        ids.map(\.uuidString).joined(separator: ",")
+    }
+
     // MARK: 내 프로필 올리기
 
     /// 내 이름·코드를 서버에 올린다. 이미 있으면 갱신한다(upsert).
     func pushProfile(_ profile: Profile) async {
-        guard var req = request(path: "/profiles") else { return }
-        req.httpMethod = "POST"
-        req.setValue("resolution=merge-duplicates", forHTTPHeaderField: "Prefer")
-
         let body: [String: String] = [
             "id": profile.id.uuidString,
             "name": profile.name,
             "code": profile.code
         ]
-        req.httpBody = try? JSONSerialization.data(withJSONObject: body)
-        _ = try? await session.data(for: req)
+        await write("POST", path: "/profiles", prefer: "resolution=merge-duplicates", body: body)
     }
 
     // MARK: 친구 찾기
@@ -66,16 +90,11 @@ actor FriendService {
     /// 초대 코드로 상대를 찾는다. 없으면 nil.
     func lookup(code: String) async -> Friend? {
         let normalized = code.uppercased().trimmingCharacters(in: .whitespaces)
-        guard var req = request(
+        guard let row = await get(
+            [ProfileRow].self,
             path: "/profiles",
             query: "code=eq.\(normalized)&select=id,name,code&limit=1"
-        ) else { return nil }
-        req.httpMethod = "GET"
-
-        guard let (data, _) = try? await session.data(for: req),
-              let rows = try? decoder.decode([ProfileRow].self, from: data),
-              let row = rows.first
-        else { return nil }
+        )?.first else { return nil }
 
         return Friend(id: row.id, name: row.name, code: row.code)
     }
@@ -89,16 +108,11 @@ actor FriendService {
     /// 여러 id의 프로필을 한 번에 가져온다. 친구 목록을 이름으로 채울 때 쓴다.
     func profiles(ids: [UUID]) async -> [Friend] {
         guard !ids.isEmpty else { return [] }
-        let list = ids.map(\.uuidString).joined(separator: ",")
-        guard var req = request(
+        let rows = await get(
+            [ProfileRow].self,
             path: "/profiles",
-            query: "id=in.(\(list))&select=id,name,code"
-        ) else { return [] }
-        req.httpMethod = "GET"
-
-        guard let (data, _) = try? await session.data(for: req),
-              let rows = try? decoder.decode([ProfileRow].self, from: data)
-        else { return [] }
+            query: "id=in.(\(idList(ids)))&select=id,name,code"
+        ) ?? []
         return rows.map { Friend(id: $0.id, name: $0.name, code: $0.code) }
     }
 
@@ -117,17 +131,13 @@ actor FriendService {
 
     /// 친구 요청을 보낸다. 이미 있으면 무시된다(같은 방향 유니크).
     func sendRequest(from me: UUID, to other: UUID) async {
-        guard me != other, var req = request(path: "/friendships") else { return }
-        req.httpMethod = "POST"
-        req.setValue("resolution=ignore-duplicates", forHTTPHeaderField: "Prefer")
-
+        guard me != other else { return }
         let body: [String: String] = [
             "requester": me.uuidString,
             "addressee": other.uuidString,
             "status": "pending"
         ]
-        req.httpBody = try? JSONSerialization.data(withJSONObject: body)
-        _ = try? await session.data(for: req)
+        await write("POST", path: "/friendships", prefer: "resolution=ignore-duplicates", body: body)
     }
 
     /// 나를 향한 대기 중인 요청의 상대 id들. (내가 수락해야 할 사람들)
@@ -135,66 +145,52 @@ actor FriendService {
     /// **실패하면 nil이다.** 빈 배열(요청 없음)과 실패를 구분해야 한다 —
     /// 실패를 빈 값으로 취급하면 네트워크가 잠깐 끊길 때 로컬 상태를 지워버린다.
     func incomingRequesterIDs(me: UUID) async -> [UUID]? {
-        guard var req = request(
+        await get(
+            [FriendshipRow].self,
             path: "/friendships",
             query: "addressee=eq.\(me.uuidString)&status=eq.pending&select=requester,addressee"
-        ) else { return nil }
-        req.httpMethod = "GET"
-
-        guard let (data, _) = try? await session.data(for: req),
-              let rows = try? decoder.decode([FriendshipRow].self, from: data)
-        else { return nil }
-        return rows.map(\.requester)
+        )?.map(\.requester)
     }
 
     /// 수락된 친구들의 상대 id. 내가 보냈든 받았든 상관없이 모은다.
     /// **실패하면 nil** — 빈 배열(친구 없음)과 구분한다.
     func acceptedFriendIDs(me: UUID) async -> [UUID]? {
         let mine = me.uuidString
-        guard var req = request(
+        guard let rows = await get(
+            [FriendshipRow].self,
             path: "/friendships",
             query: "or=(requester.eq.\(mine),addressee.eq.\(mine))"
                  + "&status=eq.accepted&select=requester,addressee"
         ) else { return nil }
-        req.httpMethod = "GET"
-
-        guard let (data, _) = try? await session.data(for: req),
-              let rows = try? decoder.decode([FriendshipRow].self, from: data)
-        else { return nil }
         // 나 아닌 쪽이 친구다.
         return rows.map { $0.requester == me ? $0.addressee : $0.requester }
     }
 
     /// 나에게 온 요청을 수락한다. requester → me 방향의 줄을 accepted로 바꾼다.
     func accept(me: UUID, requester: UUID) async {
-        guard var req = request(
-            path: "/friendships",
-            query: "requester=eq.\(requester.uuidString)&addressee=eq.\(me.uuidString)"
-        ) else { return }
-        req.httpMethod = "PATCH"
-        req.httpBody = try? JSONSerialization.data(withJSONObject: ["status": "accepted"])
-        _ = try? await session.data(for: req)
+        await write(
+            "PATCH", path: "/friendships",
+            query: "requester=eq.\(requester.uuidString)&addressee=eq.\(me.uuidString)",
+            body: ["status": "accepted"]
+        )
     }
 
     /// 관계를 끊는다. 양방향 줄을 removed로 바꿔 서로에게서 사라지게 한다.
     func remove(me: UUID, other: UUID) async {
         let a = me.uuidString, b = other.uuidString
-        guard var req = request(
-            path: "/friendships",
+        await write(
+            "PATCH", path: "/friendships",
             query: "or=(and(requester.eq.\(a),addressee.eq.\(b)),"
-                 + "and(requester.eq.\(b),addressee.eq.\(a)))"
-        ) else { return }
-        req.httpMethod = "PATCH"
-        req.httpBody = try? JSONSerialization.data(withJSONObject: ["status": "removed"])
-        _ = try? await session.data(for: req)
+                 + "and(requester.eq.\(b),addressee.eq.\(a)))",
+            body: ["status": "removed"]
+        )
     }
 
     // MARK: 날짜별 요약 (친구 월간)
 
     /// 세션을 서버 JSON으로. Date는 ISO8601 문자열로 담는다.
     private func sessionsJSON(_ sessions: [StudySession]) -> [[String: String]] {
-        let iso = ISO8601DateFormatter()
-        return sessions.compactMap { s in
+        sessions.compactMap { s in
             guard let end = s.end else { return nil }   // 열린 구간은 올리지 않는다
             return ["start": iso.string(from: s.start), "end": iso.string(from: end)]
         }
@@ -202,10 +198,7 @@ actor FriendService {
 
     /// 내 날짜별 요약을 한꺼번에 올린다(있으면 갱신). 백필·갱신 공용.
     func pushDays(_ stats: [DayStat], for me: UUID) async {
-        guard !stats.isEmpty, var req = request(path: "/day_stats") else { return }
-        req.httpMethod = "POST"
-        req.setValue("resolution=merge-duplicates", forHTTPHeaderField: "Prefer")
-
+        guard !stats.isEmpty else { return }
         let rows: [[String: Any]] = stats.map { s in
             [
                 "user_id": me.uuidString,
@@ -215,8 +208,7 @@ actor FriendService {
                 "sessions": sessionsJSON(s.sessions)
             ]
         }
-        req.httpBody = try? JSONSerialization.data(withJSONObject: rows)
-        _ = try? await session.data(for: req)
+        await write("POST", path: "/day_stats", prefer: "resolution=merge-duplicates", body: rows)
     }
 
     private struct DayStatRow: Decodable {
@@ -229,15 +221,11 @@ actor FriendService {
 
     /// 친구의 날짜별 요약을 가져온다. 실패하면 nil(빈 것과 구분).
     func dayStats(of friend: UUID) async -> [DayStat]? {
-        guard var req = request(
+        guard let rows = await get(
+            [DayStatRow].self,
             path: "/day_stats",
             query: "user_id=eq.\(friend.uuidString)&select=day_key,seconds,goal_minutes,sessions"
         ) else { return nil }
-        req.httpMethod = "GET"
-
-        guard let (data, _) = try? await session.data(for: req),
-              let rows = try? decoder.decode([DayStatRow].self, from: data)
-        else { return nil }
 
         return rows.map { r in
             DayStat(
@@ -255,20 +243,15 @@ actor FriendService {
 
     /// 내 현재 상태를 서버에 올린다(있으면 갱신). 친구 탭이 이걸 읽는다.
     func pushPresence(_ p: Presence, for me: UUID) async {
-        guard var req = request(path: "/statuses") else { return }
-        req.httpMethod = "POST"
-        req.setValue("resolution=merge-duplicates", forHTTPHeaderField: "Prefer")
-
         let body: [String: Any] = [
             "user_id": me.uuidString,
             "state": p.state.rawValue,
             "day_key": p.dayKey,
             "seconds": p.seconds,
             "goal_minutes": p.goalMinutes,
-            "updated_at": ISO8601DateFormatter().string(from: p.updatedAt)
+            "updated_at": iso.string(from: p.updatedAt)
         ]
-        req.httpBody = try? JSONSerialization.data(withJSONObject: body)
-        _ = try? await session.data(for: req)
+        await write("POST", path: "/statuses", prefer: "resolution=merge-duplicates", body: body)
     }
 
     private struct StatusRow: Decodable {
@@ -283,17 +266,12 @@ actor FriendService {
     /// 친구들의 현재 상태를 가져온다. id → presence.
     func presences(of ids: [UUID]) async -> [UUID: Presence] {
         guard !ids.isEmpty else { return [:] }
-        let list = ids.map(\.uuidString).joined(separator: ",")
-        guard var req = request(
+        let rows = await get(
+            [StatusRow].self,
             path: "/statuses",
-            query: "user_id=in.(\(list))"
+            query: "user_id=in.(\(idList(ids)))"
                  + "&select=user_id,state,day_key,seconds,goal_minutes,updated_at"
-        ) else { return [:] }
-        req.httpMethod = "GET"
-
-        guard let (data, _) = try? await session.data(for: req),
-              let rows = try? decoder.decode([StatusRow].self, from: data)
-        else { return [:] }
+        ) ?? []
 
         var out: [UUID: Presence] = [:]
         for r in rows {
@@ -312,19 +290,15 @@ actor FriendService {
 
     /// 내 이벤트를 서버에 남긴다. 친구들이 폴링으로 가져간다.
     func send(_ event: StudyEvent, from me: UUID) async {
-        guard event.kind.notifiesFriends,
-              var req = request(path: "/events") else { return }
-        req.httpMethod = "POST"
-
+        guard event.kind.notifiesFriends else { return }
         let body: [String: Any] = [
             "user_id": me.uuidString,
             "kind": event.kind.rawValue,
-            "created_at": ISO8601DateFormatter().string(from: event.at),
+            "created_at": iso.string(from: event.at),
             "seconds": event.seconds,
             "goal_minutes": event.goalMinutes
         ]
-        req.httpBody = try? JSONSerialization.data(withJSONObject: body)
-        _ = try? await session.data(for: req)
+        await write("POST", path: "/events", body: body)
     }
 
     // MARK: 친구 이벤트 가져오기
@@ -334,17 +308,12 @@ actor FriendService {
     func poll(friendIDs: [UUID]) async -> [RemoteEvent] {
         guard !friendIDs.isEmpty else { return [] }
 
-        let ids = friendIDs.map(\.uuidString).joined(separator: ",")
-        let since = ISO8601DateFormatter().string(from: lastSeen)
-        guard var req = request(
+        let since = iso.string(from: lastSeen)
+        guard let rows = await get(
+            [RemoteEvent].self,
             path: "/events",
-            query: "user_id=in.(\(ids))&created_at=gt.\(since)&order=created_at.asc"
+            query: "user_id=in.(\(idList(friendIDs)))&created_at=gt.\(since)&order=created_at.asc"
         ) else { return [] }
-        req.httpMethod = "GET"
-
-        guard let (data, _) = try? await session.data(for: req),
-              let rows = try? decoder.decode([RemoteEvent].self, from: data)
-        else { return [] }
 
         // 가장 최근 것으로 커서를 민다. 같은 이벤트를 두 번 띄우지 않는다.
         if let newest = rows.map(\.created_at).max() {
