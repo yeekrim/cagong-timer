@@ -136,17 +136,31 @@ final class PhotoLibrary: ObservableObject {
     }
 
     /// 고른 사진을 사용자 폴더로 복사한다. 원본은 건드리지 않는다.
-    /// 같은 이름의 파일이 있으면 바꿔 넣는다. 복사에 실패한 사진은 건너뛴다.
+    ///
+    /// **이미 있는 사진은 덮어쓰지 않는다.** 같은 이름이 있으면 "이름 2", "이름 3"처럼
+    /// 새 이름으로 넣는다. 덮어쓰면 그 사진이 유일한 사본이었을 때 되돌릴 수 없고,
+    /// 화면은 캐시된 옛 이미지를 계속 보여준다. 번들 사진과 이름이 같아도 마찬가지 —
+    /// 같은 id면 목록에서 번들 사진에 가려 보이지 않는다.
+    /// 복사에 실패한 사진은 건너뛴다.
     ///
     /// - Returns: 마지막으로 들어간 장면의 id. 하나도 못 넣었으면 nil.
     func importPhotos(from sources: [URL]) -> String? {
+        let folder = userFolder
+        // 장면 id(확장자 뺀 이름)가 겹치면 안 된다. 목록에 있는 것과 폴더에 있는 것 모두.
+        var taken = Set(scenes.map(\.id))
+        let existing = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
+        for name in existing { taken.insert((name as NSString).deletingPathExtension) }
+
         var lastAdded: String?
         for source in sources {
-            let destination = userFolder.appendingPathComponent(source.lastPathComponent)
-            try? FileManager.default.removeItem(at: destination)
+            let base = source.deletingPathExtension().lastPathComponent
+            let id = Self.availableName(for: base, taken: taken)
+            let ext = source.pathExtension
+            let destination = folder.appendingPathComponent(ext.isEmpty ? id : "\(id).\(ext)")
             do {
                 try FileManager.default.copyItem(at: source, to: destination)
-                lastAdded = destination.deletingPathExtension().lastPathComponent
+                taken.insert(id)
+                lastAdded = id
             } catch {
                 continue
             }
@@ -154,6 +168,14 @@ final class PhotoLibrary: ObservableObject {
 
         reload()
         return lastAdded
+    }
+
+    /// 겹치지 않는 이름. 안 겹치면 `base` 그대로, 겹치면 "base 2", "base 3"… 중 처음 빈 것.
+    nonisolated static func availableName(for base: String, taken: Set<String>) -> String {
+        guard taken.contains(base) else { return base }
+        var n = 2
+        while taken.contains("\(base) \(n)") { n += 1 }
+        return "\(base) \(n)"
     }
 
     func scene(id: String?) -> PhotoScene? {

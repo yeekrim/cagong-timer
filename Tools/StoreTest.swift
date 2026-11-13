@@ -549,6 +549,16 @@ struct StoreTest {
               fresh.monthStudiedDays(year: c.year!, month: c.month!, at: later) == 1)
         fresh.pause()
 
+        // ── 사진 이름 ───────────────────────────────────────────
+        // 같은 이름의 사진을 넣어도 덮어쓰지 않고 새 이름을 받는다.
+        print("\n── 사진 이름 ──")
+        check("안 겹치면 그대로", PhotoLibrary.availableName(for: "카페", taken: ["바다"]) == "카페")
+        check("겹치면 '이름 2'", PhotoLibrary.availableName(for: "카페", taken: ["카페"]) == "카페 2")
+        check("2도 있으면 '이름 3'",
+              PhotoLibrary.availableName(for: "카페", taken: ["카페", "카페 2"]) == "카페 3")
+        check("번들 사진 id와 겹쳐도 새 이름",
+              PhotoLibrary.availableName(for: "paris-summer", taken: ["paris-summer"]) == "paris-summer 2")
+
         for f in [file, legacyFile] { try? FileManager.default.removeItem(at: f) }
 
         print("\n" + (failures == 0 ? "전부 통과" : "\(failures)개 실패"))
