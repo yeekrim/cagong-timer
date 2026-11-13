@@ -10,8 +10,7 @@ struct MonthlyView: View {
     let theme: Theme
     let namespace: Namespace.ID
 
-    @State private var year: Int
-    @State private var month: Int
+    @State private var cursor = MonthCursor.current()
     @State private var revealed = false
     /// 상세를 펼친 날짜. nil이면 닫힘.
     @State private var selectedKey: String?
@@ -19,9 +18,6 @@ struct MonthlyView: View {
     init(theme: Theme, namespace: Namespace.ID) {
         self.theme = theme
         self.namespace = namespace
-        let now = Calendar.current.dateComponents([.year, .month], from: Date())
-        _year = State(initialValue: now.year ?? 2026)
-        _month = State(initialValue: now.month ?? 1)
     }
 
     var body: some View {
@@ -36,9 +32,13 @@ struct MonthlyView: View {
     private var board: some View {
         VStack(spacing: 0) {
             header
-            summary
+            MonthSummary(
+                total: store.monthTotal(year: cursor.year, month: cursor.month),
+                days: store.monthStudiedDays(year: cursor.year, month: cursor.month),
+                theme: theme
+            )
                 .padding(.top, 18)
-            weekdayRow
+            MonthWeekdayRow(theme: theme)
                 .padding(.top, 22)
             grid
                 .padding(.top, 6)
@@ -71,7 +71,7 @@ struct MonthlyView: View {
 
             VStack(alignment: .leading, spacing: 3) {
                 Eyebrow(text: "Monthly", theme: theme, color: theme.p.accentSoft)
-                Text("\(String(year))년 \(month)월")
+                Text(cursor.title)
                     .font(Typo.title(21))
                     .foregroundStyle(theme.p.ink)
             }
@@ -79,97 +79,20 @@ struct MonthlyView: View {
             Spacer()
 
             HStack(spacing: 4) {
-                stepButton(systemName: "chevron.left", help: "이전 달") { step(-1) }
-                stepButton(systemName: "chevron.right", help: "다음 달", disabled: isAtCurrentMonth) { step(1) }
+                MonthStepButton(systemName: "chevron.left", help: "이전 달", theme: theme) { step(-1) }
+                MonthStepButton(systemName: "chevron.right", help: "다음 달",
+                                disabled: cursor.isCurrent, theme: theme) { step(1) }
             }
         }
     }
 
-    private func stepButton(
-        systemName: String,
-        help: String,
-        disabled: Bool = false,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            Image(systemName: systemName)
-                .font(.system(size: 11, weight: .bold))
-                .foregroundStyle(disabled ? theme.p.inkSoft.opacity(0.3) : theme.p.inkSoft)
-                .frame(width: 28, height: 28)
-                .background(
-                    Circle().fill(theme.p.ink.opacity(disabled ? 0 : 0.05))
-                )
-        }
-        .buttonStyle(PressableStyle())
-        .disabled(disabled)
-        .help(help)
-    }
-
-    // MARK: 요약
-
-    private var summary: some View {
-        HStack(spacing: 0) {
-            stat(label: "Total", value: TimeFormat.human(monthTotal), emphasis: true)
-            divider
-            stat(label: "Days", value: "\(studiedDays)일")
-            divider
-            stat(label: "Average", value: averageText)
-        }
-        // 회색 박스로 감싸면 "큰 숫자 + 작은 라벨" 템플릿이 된다.
-        // 위아래 헤어라인만 남겨 숫자가 종이 위에 바로 놓이게 한다.
-        .padding(.vertical, 18)
-        .overlay(alignment: .top) { hairline }
-        .overlay(alignment: .bottom) { hairline }
-    }
-
-    private var hairline: some View {
-        Rectangle()
-            .fill(theme.p.cardStroke.opacity(0.8))
-            .frame(height: 1)
-    }
-
-    private var divider: some View {
-        Rectangle()
-            .fill(theme.p.cardStroke.opacity(0.7))
-            .frame(width: 1, height: 30)
-    }
-
-    /// 값의 글자 크기가 서로 달라서, 높이를 고정하지 않으면 라벨 줄이 어긋난다.
-    private func stat(label: String, value: String, emphasis: Bool = false) -> some View {
-        VStack(spacing: 8) {
-            Eyebrow(text: label, theme: theme)
-                .frame(height: 13, alignment: .bottom)
-
-            Text(value)
-                .font(emphasis ? Typo.title(22) : Typo.bodyStrong(15))
-                .foregroundStyle(emphasis ? theme.p.ink : theme.p.inkSoft)
-                .contentTransition(.numericText())
-                .frame(height: 28, alignment: .center)
-        }
-        .frame(maxWidth: .infinity)
-        .animation(Motion.digit, value: value)
-    }
-
-    // MARK: 요일 / 격자
-
-    private var weekdayRow: some View {
-        HStack(spacing: 6) {
-            ForEach(Array(KoDate.weekdaySymbols.enumerated()), id: \.offset) { idx, sym in
-                Text(sym)
-                    .font(Typo.body(11.5))
-                    .foregroundStyle(
-                        idx == 0 ? theme.p.brass.opacity(0.9) : theme.p.inkSoft.opacity(0.75)
-                    )
-                    .frame(maxWidth: .infinity)
-            }
-        }
-    }
+    // MARK: 격자
 
     /// 한 달은 최대 6주라 스크롤이 필요 없다. 고정 격자로 두고,
     /// 리빌은 주 단위로 시차를 둔 등장으로 처리한다.
     private var grid: some View {
         VStack(spacing: 6) {
-            ForEach(Array(weeks.enumerated()), id: \.offset) { weekIndex, week in
+            ForEach(Array(cursor.weeks.enumerated()), id: \.offset) { weekIndex, week in
                 HStack(spacing: 6) {
                     ForEach(Array(week.enumerated()), id: \.offset) { _, day in
                         if let day {
@@ -188,10 +111,7 @@ struct MonthlyView: View {
                                 selectedKey = (selectedKey == key) ? nil : key
                             }
                             .popover(
-                                isPresented: Binding(
-                                    get: { selectedKey == key },
-                                    set: { if !$0, selectedKey == key { selectedKey = nil } }
-                                ),
+                                isPresented: .selecting(key, in: $selectedKey),
                                 arrowEdge: .bottom
                             ) {
                                 DayDetail(
@@ -208,9 +128,7 @@ struct MonthlyView: View {
                                 )
                             }
                         } else {
-                            Color.clear
-                                .frame(height: 58)
-                                .frame(maxWidth: .infinity)
+                            DayCell.blank
                         }
                     }
                 }
@@ -226,33 +144,10 @@ struct MonthlyView: View {
         .onAppear { revealed = true }
     }
 
-    // MARK: 계산
-
-    private var isAtCurrentMonth: Bool {
-        let now = Calendar.current.dateComponents([.year, .month], from: Date())
-        return now.year == year && now.month == month
-    }
-
-    private var monthTotal: TimeInterval { store.monthTotal(year: year, month: month) }
-    private var studiedDays: Int { store.monthStudiedDays(year: year, month: month) }
-
-    private var averageText: String {
-        guard studiedDays > 0 else { return "—" }
-        return TimeFormat.human(monthTotal / Double(studiedDays))
-    }
-
-    /// 1일 앞의 빈 칸을 채우고 7개씩 끊는다.
-    private var weeks: [[Date?]] { MonthGrid.weeks(year: year, month: month) }
+    // MARK: 달 넘기기
 
     private func step(_ delta: Int) {
-        withAnimation(Motion.screen) {
-            var m = month + delta
-            var y = year
-            if m > 12 { m = 1; y += 1 }
-            if m < 1 { m = 12; y -= 1 }
-            month = m
-            year = y
-        }
+        withAnimation(Motion.screen) { cursor.step(delta) }
     }
 }
 
@@ -296,6 +191,13 @@ struct DayCell: View {
     let theme: Theme
 
     @State private var hovered = false
+
+    /// 1일 앞·말일 뒤의 빈 칸. 날짜 칸과 같은 크기만 차지한다.
+    static var blank: some View {
+        Color.clear
+            .frame(height: 58)
+            .frame(maxWidth: .infinity)
+    }
 
     private var fill: Double {
         guard goalSeconds > 0 else { return 0 }
@@ -508,83 +410,30 @@ private struct DayDetail: View {
         return sessions.compactMap(\.end).max()
     }
 
-    /// 그날 몇 시에 앉아 몇 시에 접었는지. 총 시간만으로는 안 보이는 것이다.
     private var clockRow: some View {
-        HStack(spacing: 0) {
-            stamp(label: "시작", value: firstStart.map(KoDate.hourMinute) ?? "—")
-
-            Rectangle()
-                .fill(theme.p.cardStroke.opacity(0.7))
-                .frame(width: 1, height: 24)
-
-            stamp(
-                label: inProgress ? "지금" : "마무리",
-                value: inProgress ? "재는 중" : (lastEnd.map(KoDate.hourMinute) ?? "—")
-            )
-        }
-        .padding(.vertical, 12)
+        DayClockRow(
+            start: firstStart.map(KoDate.hourMinute) ?? "—",
+            endLabel: inProgress ? "지금" : "마무리",
+            end: inProgress ? "재는 중" : (lastEnd.map(KoDate.hourMinute) ?? "—"),
+            theme: theme
+        )
     }
 
-    private func stamp(label: String, value: String) -> some View {
-        VStack(spacing: 5) {
-            Text(label)
-                .font(Typo.body(10.5))
-                .foregroundStyle(theme.p.inkSoft.opacity(0.85))
-            Text(value)
-                .font(Typo.plain(14.5, weight: .semibold))
-                .monospacedDigit()
-                .foregroundStyle(theme.p.ink)
-        }
-        .frame(maxWidth: .infinity)
-    }
-
-    /// 어떻게 쪼개 앉았는지 보여준다. 한 번만 잰 날도 둔다 — 그 구간을 뺄 수 있어야 한다.
+    /// 한 번만 잰 날도 둔다 — 그 구간을 뺄 수 있어야 한다.
     ///
     /// **접어둔다.** 잠깐씩 여러 번 눌렀다 뗀 날은 구간이 수십 개가 되는데,
     /// 그게 다 펼쳐져 있으면 정작 보려던 시간과 할 일이 밀려난다.
     /// 평소엔 몇 번 앉았는지만 알려주고, 궁금할 때 편다.
-    /// 구간 목록. 펼치면 바깥 스크롤이 통째로 받아주므로 여기엔 스크롤을 두지 않는다.
-    @ViewBuilder
     private var sessionList: some View {
-        Divider().overlay(theme.p.cardStroke.opacity(0.6))
-
-        VStack(alignment: .leading, spacing: 0) {
-            sessionToggle
-
-            if showSessions {
-                VStack(alignment: .leading, spacing: 6) {
-                    ForEach(sessions) { session in
-                        sessionRow(session)
-                    }
-                }
-                .padding(.bottom, 12)
-                .transition(.opacity)
-            }
+        SessionSection(
+            title: sessions.count > 1 ? "\(sessions.count)번 나눠서 했어요" : "한 번에 했어요",
+            isExpanded: $showSessions,
+            sessions: sessions,
+            showsHelp: true,
+            theme: theme
+        ) { session in
+            sessionRow(session)
         }
-        .padding(.horizontal, 18)
-    }
-
-    private var sessionToggle: some View {
-        Button {
-            withAnimation(Motion.button) { showSessions.toggle() }
-        } label: {
-            HStack(spacing: 6) {
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(theme.p.inkSoft.opacity(0.7))
-                    .rotationEffect(.degrees(showSessions ? 90 : 0))
-
-                Text(sessions.count > 1 ? "\(sessions.count)번 나눠서 했어요" : "한 번에 했어요")
-                    .font(Typo.body(11.5))
-                    .foregroundStyle(theme.p.inkSoft)
-
-                Spacer(minLength: 8)
-            }
-            .padding(.vertical, 10)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(PressableStyle(scale: 0.99))
-        .help(showSessions ? "구간 접기" : "언제언제 앉았는지 보기")
     }
 
     private func sessionRow(_ session: StudySession) -> some View {
@@ -594,19 +443,11 @@ private struct DayDetail: View {
         let showButton = removable && (armed || hoveredSession == session.id)
 
         return HStack(spacing: 8) {
-            Text(KoDate.hourMinute(session.start)
-                 + " – "
-                 + (session.end.map(KoDate.hourMinute) ?? "…"))
-                .font(Typo.plain(11.5))
-                .monospacedDigit()
-                .foregroundStyle(theme.p.inkSoft)
+            SessionRangeText(session: session, theme: theme)
 
             Spacer(minLength: 8)
 
-            Text(TimeFormat.human(session.length()))
-                .font(Typo.body(11.5))
-                .foregroundStyle(theme.p.inkSoft.opacity(0.85))
-                .strikethrough(armed, color: theme.p.inkSoft.opacity(0.6))
+            SessionLengthText(session: session, struck: armed, theme: theme)
 
             Button {
                 if armed {
