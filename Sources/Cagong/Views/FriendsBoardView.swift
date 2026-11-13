@@ -38,7 +38,7 @@ struct FriendsBoardView: View {
         .padding(.horizontal, 26)
         .padding(.vertical, 24)
         .glass(
-            RoundedRectangle(cornerRadius: 22, style: .continuous),
+            RoundedRectangle(cornerRadius: Corner.card, style: .continuous),
             tint: theme.p.card,
             tintOpacity: 0.24
         )
@@ -126,10 +126,7 @@ struct FriendsBoardView: View {
             }
         }
         .padding(12)
-        .background(
-            RoundedRectangle(cornerRadius: 13, style: .continuous)
-                .fill(theme.p.ink.opacity(theme.isDark ? 0.10 : 0.035))
-        )
+        .background(SoftCardBackground(theme: theme, cornerRadius: 13))
         // 누르면 그 친구의 월간 기록을 연다.
         .contentShape(Rectangle())
         .onTapGesture { opened = status.friend }
@@ -138,14 +135,7 @@ struct FriendsBoardView: View {
 
     private func avatar(_ status: FriendStatus) -> some View {
         ZStack(alignment: .bottomTrailing) {
-            Circle()
-                .fill(theme.p.accent.opacity(0.15))
-                .frame(width: 42, height: 42)
-                .overlay(
-                    Text(status.friend.name.isEmpty ? "?" : String(status.friend.name.prefix(1)))
-                        .font(Typo.bodyStrong(17))
-                        .foregroundStyle(theme.p.accent)
-                )
+            FriendAvatar(name: status.friend.name, size: 42, fontSize: 17, theme: theme)
             // 공부 중이면 초록 점을 찍어 살아있음을 표시한다.
             if status.activity == .studying {
                 Circle()
@@ -176,23 +166,7 @@ struct FriendsBoardView: View {
 
     private func progressLine(_ status: FriendStatus, now: Date) -> some View {
         HStack(spacing: 8) {
-            // 진행 막대
-            ZStack(alignment: .leading) {
-                Capsule()
-                    .fill(theme.p.ink.opacity(theme.isDark ? 0.16 : 0.08))
-                    .frame(height: 4)
-                GeometryReader { g in
-                    Capsule()
-                        .fill(
-                            LinearGradient(
-                                colors: [theme.p.accentSoft, theme.p.accent],
-                                startPoint: .leading, endPoint: .trailing
-                            )
-                        )
-                        .frame(width: g.size.width * status.progress(at: now), height: 4)
-                }
-                .frame(height: 4)
-            }
+            ProgressCapsule(progress: status.progress(at: now), theme: theme)
 
             Text(timeLabel(status, now: now))
                 .font(Typo.plain(11.5, weight: .medium))

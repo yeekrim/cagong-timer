@@ -55,7 +55,7 @@ struct TodoSetupView: View {
         // 좁은 창에서는 줄어든다. 음료 고르기는 유연 격자라 따라 줄어든다.
         .frame(maxWidth: 520)
         .glass(
-            RoundedRectangle(cornerRadius: 22, style: .continuous),
+            RoundedRectangle(cornerRadius: Corner.card, style: .continuous),
             tint: theme.p.card,
             tintOpacity: 0.22
         )

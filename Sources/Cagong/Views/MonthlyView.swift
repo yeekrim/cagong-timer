@@ -50,7 +50,7 @@ struct MonthlyView: View {
         .padding(.vertical, 26)
         // 작은 글자가 많은 면이라 틴트를 타이머 카드보다 조금 더 준다.
         .glass(
-            RoundedRectangle(cornerRadius: 22, style: .continuous),
+            RoundedRectangle(cornerRadius: Corner.card, style: .continuous),
             tint: theme.p.card,
             tintOpacity: 0.24
         )

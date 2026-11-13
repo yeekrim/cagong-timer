@@ -182,22 +182,13 @@ struct RootView: View {
         return Button {
             withAnimation(Motion.screen) { tab = target }
         } label: {
-            Text(label)
-                .font(Typo.bodyStrong(13))
-                .foregroundStyle(
-                    selected
-                    ? theme.onAccent
-                    : theme.p.inkSoft
-                )
-                .padding(.horizontal, 17)
-                .padding(.vertical, 7)
-                .background {
-                    if selected {
-                        Capsule()
-                            .fill(theme.p.accent)
-                            .matchedGeometryEffect(id: "tabPill", in: tabSpace)
-                    }
-                }
+            PillTabLabel(
+                text: label,
+                selected: selected,
+                pillID: "tabPill",
+                namespace: tabSpace,
+                theme: theme
+            )
         }
         .buttonStyle(PressableStyle())
     }

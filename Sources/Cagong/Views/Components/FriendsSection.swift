@@ -41,7 +41,7 @@ struct FriendsSection: View {
 
     private var meCard: some View {
         VStack(alignment: .leading, spacing: 0) {
-            sectionHeader("나")
+            SectionHeader(title: "나", theme: theme)
 
             VStack(alignment: .leading, spacing: 12) {
                 // 이름
@@ -96,7 +96,7 @@ struct FriendsSection: View {
 
     private var addCard: some View {
         VStack(alignment: .leading, spacing: 0) {
-            sectionHeader("친구 추가", note: "친구의 초대 코드를 넣으세요")
+            SectionHeader(title: "친구 추가", note: "친구의 초대 코드를 넣으세요", theme: theme)
 
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 8) {
@@ -157,8 +157,7 @@ struct FriendsSection: View {
     private var requestList: some View {
         if !friendSync.incoming.isEmpty {
             VStack(alignment: .leading, spacing: 0) {
-                sectionHeader("받은 요청 \(friendSync.incoming.count)개",
-                              note: "수락하면 서로 친구가 돼요")
+                SectionHeader(title: "받은 요청 \(friendSync.incoming.count)개", note: "수락하면 서로 친구가 돼요", theme: theme)
 
                 VStack(spacing: 8) {
                     ForEach(friendSync.incoming) { person in
@@ -171,7 +170,7 @@ struct FriendsSection: View {
 
     private func requestRow(_ person: Friend) -> some View {
         HStack(spacing: 12) {
-            avatar(person.name)
+            FriendAvatar(name: person.name, size: 32, fontSize: 14, theme: theme)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(person.displayName)
@@ -199,7 +198,7 @@ struct FriendsSection: View {
     private var friendList: some View {
         if !store.friends.isEmpty {
             VStack(alignment: .leading, spacing: 0) {
-                sectionHeader("친구 \(store.friends.count)명")
+                SectionHeader(title: "친구 \(store.friends.count)명", theme: theme)
 
                 VStack(spacing: 8) {
                     ForEach(store.friends) { friend in
@@ -212,7 +211,7 @@ struct FriendsSection: View {
 
     private func friendRow(_ friend: Friend) -> some View {
         HStack(spacing: 12) {
-            avatar(friend.name)
+            FriendAvatar(name: friend.name, size: 32, fontSize: 14, theme: theme)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(friend.displayName)
@@ -241,22 +240,11 @@ struct FriendsSection: View {
         .background(cardBackground)
     }
 
-    private func avatar(_ name: String) -> some View {
-        Circle()
-            .fill(theme.p.accent.opacity(0.15))
-            .frame(width: 32, height: 32)
-            .overlay(
-                Text(name.isEmpty ? "?" : String(name.prefix(1)))
-                    .font(Typo.bodyStrong(14))
-                    .foregroundStyle(theme.p.accent)
-            )
-    }
-
     // MARK: 설정 전
 
     private var notConfigured: some View {
         VStack(alignment: .leading, spacing: 0) {
-            sectionHeader("친구")
+            SectionHeader(title: "친구", theme: theme)
             VStack(alignment: .leading, spacing: 8) {
                 Text("아직 서버가 연결되지 않았어요.")
                     .font(Typo.bodyStrong(13))
@@ -303,21 +291,6 @@ struct FriendsSection: View {
     // MARK: 공통
 
     private var cardBackground: some View {
-        RoundedRectangle(cornerRadius: 12, style: .continuous)
-            .fill(theme.p.ink.opacity(theme.isDark ? 0.10 : 0.035))
-    }
-
-    private func sectionHeader(_ title: String, note: String? = nil) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text(title)
-                .font(Typo.bodyStrong(13))
-                .foregroundStyle(theme.p.accentSoft)
-            if let note {
-                Text(note)
-                    .font(Typo.body(11))
-                    .foregroundStyle(theme.p.inkSoft.opacity(0.8))
-            }
-        }
-        .padding(.bottom, 9)
+        SoftCardBackground(theme: theme)
     }
 }

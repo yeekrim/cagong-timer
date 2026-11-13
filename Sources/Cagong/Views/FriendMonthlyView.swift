@@ -6,7 +6,6 @@ import SwiftUI
 /// 없다. 날짜별 공부 시간과, 날짜를 누르면 시작·마무리 시각·구간만 나온다.
 struct FriendMonthlyView: View {
     @EnvironmentObject private var friendSync: FriendSync
-    @Environment(\.dismiss) private var dismiss
     let friend: Friend
     let theme: Theme
 
@@ -21,38 +20,12 @@ struct FriendMonthlyView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            titleBar
+            SheetTitleBar(title: friend.displayName, theme: theme, bottomPadding: 14)
             board
         }
         .frame(width: 560, height: 620)
         .background(theme.p.card)
         .task { await load() }
-    }
-
-    private var titleBar: some View {
-        HStack {
-            Text(friend.displayName)
-                .font(Typo.title(17))
-                .foregroundStyle(theme.p.ink)
-            Spacer()
-            Button {
-                dismiss()
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(theme.p.inkSoft)
-                    .frame(width: 26, height: 26)
-                    .background(Circle().fill(theme.p.ink.opacity(0.06)))
-            }
-            .buttonStyle(PressableStyle())
-            .keyboardShortcut(.cancelAction)
-        }
-        .padding(.horizontal, 24)
-        .padding(.top, 20)
-        .padding(.bottom, 14)
-        .overlay(alignment: .bottom) {
-            Rectangle().fill(theme.p.cardStroke).frame(height: 1)
-        }
     }
 
     private var board: some View {

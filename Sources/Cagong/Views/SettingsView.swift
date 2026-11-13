@@ -28,7 +28,6 @@ enum SettingsTab: String, CaseIterable, Identifiable {
 
 struct SettingsView: View {
     @EnvironmentObject private var store: StudyStore
-    @Environment(\.dismiss) private var dismiss
     let theme: Theme
 
     @State private var tab: SettingsTab = .drink
@@ -36,7 +35,7 @@ struct SettingsView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            titleBar
+            SheetTitleBar(title: "설정", theme: theme)
             tabBar
 
             ScrollView(.vertical, showsIndicators: false) {
@@ -68,50 +67,16 @@ struct SettingsView: View {
         return Button {
             withAnimation(Motion.screen) { tab = candidate }
         } label: {
-            Text(candidate.label)
-                .font(Typo.bodyStrong(13))
-                .foregroundStyle(
-                    selected
-                    ? theme.onAccent
-                    : theme.p.inkSoft
-                )
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 7)
-                .background {
-                    if selected {
-                        Capsule()
-                            .fill(theme.p.accent)
-                            .matchedGeometryEffect(id: "settingsTabPill", in: tabSpace)
-                    }
-                }
+            PillTabLabel(
+                text: candidate.label,
+                selected: selected,
+                stretches: true,
+                pillID: "settingsTabPill",
+                namespace: tabSpace,
+                theme: theme
+            )
         }
         .buttonStyle(PressableStyle())
-    }
-
-    private var titleBar: some View {
-        HStack {
-            Text("설정")
-                .font(Typo.title(17))
-                .foregroundStyle(theme.p.ink)
-            Spacer()
-            Button {
-                dismiss()
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(theme.p.inkSoft)
-                    .frame(width: 26, height: 26)
-                    .background(Circle().fill(theme.p.ink.opacity(0.06)))
-            }
-            .buttonStyle(PressableStyle())
-            .keyboardShortcut(.cancelAction)
-        }
-        .padding(.horizontal, 24)
-        .padding(.top, 20)
-        .padding(.bottom, 16)
-        .overlay(alignment: .bottom) {
-            Rectangle().fill(theme.p.cardStroke).frame(height: 1)
-        }
     }
 }
 
@@ -146,7 +111,7 @@ struct SettingsContent: View {
             //   1. AppSettings에 필드 추가 (예: bgmVolume, bgmTrack)
             //      → 열거형은 원시 문자열로 읽으므로 기존 저장 파일이 깨지지 않는다.
             //   2. StudyStore에 setter 추가 (setTheme/setDailyGoal과 같은 모양)
-            //   3. sectionHeader("사운드", ...) + 컨트롤 배치
+            //   3. SectionHeader(title: "사운드", ...) + 컨트롤 배치
         }
         .padding(.horizontal, 24)
         .padding(.vertical, 22)
@@ -157,7 +122,7 @@ struct SettingsContent: View {
 
     private var drinkSection: some View {
         VStack(alignment: .leading, spacing: 0) {
-            sectionHeader("음료", note: "컵에 담기는 음료")
+            SectionHeader(title: "음료", note: "컵에 담기는 음료", theme: theme)
             DrinkPicker(
                 selected: store.settings.drinkID,
                 theme: theme,
@@ -170,7 +135,7 @@ struct SettingsContent: View {
 
     private var photoSection: some View {
         VStack(alignment: .leading, spacing: 0) {
-            sectionHeader("사진 장면", note: "타이머 화면에서 ← → 로도 넘길 수 있어요")
+            SectionHeader(title: "사진 장면", note: "타이머 화면에서 ← → 로도 넘길 수 있어요", theme: theme)
 
             VStack(alignment: .leading, spacing: 12) {
                 // 스크롤 대신 격자로 둔다. 사진이 늘어나면 줄로 넘어간다.
@@ -193,10 +158,7 @@ struct SettingsContent: View {
                 }
             }
             .padding(14)
-            .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(theme.p.ink.opacity(theme.isDark ? 0.10 : 0.035))
-            )
+            .background(SoftCardBackground(theme: theme))
         }
     }
 
@@ -312,7 +274,7 @@ struct SettingsContent: View {
 
     private var themeSection: some View {
         VStack(alignment: .leading, spacing: 0) {
-            sectionHeader("테마", note: "고르면 바로 적용됩니다")
+            SectionHeader(title: "테마", note: "고르면 바로 적용됩니다", theme: theme)
             VStack(spacing: 7) {
                 ForEach(Theme.all) { candidate in
                     themeRow(candidate)
@@ -369,22 +331,5 @@ struct SettingsContent: View {
             )
         }
         .buttonStyle(PressableStyle(scale: 0.985))
-    }
-
-    // MARK: 공통
-
-    /// 섹션 제목은 한글이므로 Eyebrow(대문자 + 넓은 자간, 라틴 전용)를 쓰지 않는다.
-    private func sectionHeader(_ title: String, note: String?) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text(title)
-                .font(Typo.bodyStrong(13))
-                .foregroundStyle(theme.p.accentSoft)
-            if let note {
-                Text(note)
-                    .font(Typo.body(11))
-                    .foregroundStyle(theme.p.inkSoft.opacity(0.8))
-            }
-        }
-        .padding(.bottom, 9)
     }
 }

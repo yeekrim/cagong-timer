@@ -207,7 +207,7 @@ struct TimerView: View {
         .padding(.bottom, 24)
         .frame(width: Self.cardWidth, alignment: .leading)
         .glass(
-            RoundedRectangle(cornerRadius: 22, style: .continuous),
+            RoundedRectangle(cornerRadius: Corner.card, style: .continuous),
             tint: theme.p.card,
             tintOpacity: 0.20,
             lifted: cardHovered
@@ -219,24 +219,8 @@ struct TimerView: View {
 
     private func goalBar(progress: Double) -> some View {
         VStack(alignment: .leading, spacing: 7) {
-            ZStack(alignment: .leading) {
-                Capsule()
-                    .fill(theme.p.ink.opacity(theme.isDark ? 0.16 : 0.08))
-                    .frame(height: 4)
-
-                GeometryReader { g in
-                    Capsule()
-                        .fill(
-                            LinearGradient(
-                                colors: [theme.p.accentSoft, theme.p.accent],
-                                startPoint: .leading, endPoint: .trailing
-                            )
-                        )
-                        .frame(width: g.size.width * progress, height: 4)
-                }
-                .frame(height: 4)
-            }
-            .frame(width: Self.timeWidth)
+            ProgressCapsule(progress: progress, theme: theme)
+                .frame(width: Self.timeWidth)
             .animation(Motion.card, value: progress)
 
             goalCaption(progress: progress)

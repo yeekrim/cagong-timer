@@ -260,3 +260,46 @@ struct Eyebrow: View {
             .foregroundStyle(color ?? theme.p.inkSoft)
     }
 }
+
+/// 설정·친구 화면의 섹션 제목.
+///
+/// 섹션 제목은 한글이므로 Eyebrow(대문자 + 넓은 자간, 라틴 전용)를 쓰지 않는다.
+struct SectionHeader: View {
+    let title: String
+    var note: String? = nil
+    let theme: Theme
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(title)
+                .font(Typo.bodyStrong(13))
+                .foregroundStyle(theme.p.accentSoft)
+            if let note {
+                Text(note)
+                    .font(Typo.body(11))
+                    .foregroundStyle(theme.p.inkSoft.opacity(0.8))
+            }
+        }
+        .padding(.bottom, 9)
+    }
+}
+
+// MARK: - 모서리
+
+enum Corner {
+    /// 화면 한가운데 놓이는 큰 유리 카드(타이머·먼슬리·친구·시작 화면)
+    static let card: CGFloat = 22
+}
+
+// MARK: - 옅은 카드 바탕
+
+/// 카드 안의 작은 묶음 바탕. 테두리 없이 잉크를 아주 옅게 깐다.
+struct SoftCardBackground: View {
+    let theme: Theme
+    var cornerRadius: CGFloat = 12
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            .fill(theme.p.ink.opacity(theme.isDark ? 0.10 : 0.035))
+    }
+}
