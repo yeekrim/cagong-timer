@@ -67,7 +67,7 @@ final class StudyStore: ObservableObject {
             self.fileURL = dir.appendingPathComponent("study-data.json")
         }
 
-        var loaded = Self.load(from: self.fileURL) ?? AppData()
+        var loaded = StudyFile.load(from: self.fileURL) ?? AppData()
 
         // 신원은 파일이 아니라 UserDefaults가 진실이다. 파일이 어떤 이유로 프로필 없이
         // 다시 써져도 id가 새로 태어나지 않게 — 서버 친구 관계가 이 id에 묶여 있다.
@@ -600,7 +600,7 @@ final class StudyStore: ObservableObject {
 
         let snapshot = snapshotForWrite()
         let url = fileURL
-        ioQueue.async { Self.write(snapshot, to: url) }
+        ioQueue.async { StudyFile.write(snapshot, to: url) }
     }
 
     /// 지금 당장, 확실히 쓴다.
@@ -614,23 +614,6 @@ final class StudyStore: ObservableObject {
 
         let snapshot = snapshotForWrite()
         let url = fileURL
-        ioQueue.sync { Self.write(snapshot, to: url) }
-    }
-
-    /// 사람이 읽기 좋은 들여쓰기는 넣지 않는다 — 파일이 세 배로 커지고
-    /// 인코딩도 그만큼 느려진다. 키 정렬만 유지해 매번 같은 바이트가 나오게 한다.
-    nonisolated private static func write(_ data: AppData, to url: URL) {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys]
-        encoder.dateEncodingStrategy = .iso8601
-        guard let encoded = try? encoder.encode(data) else { return }
-        try? encoded.write(to: url, options: .atomic)
-    }
-
-    private static func load(from url: URL) -> AppData? {
-        guard let raw = try? Data(contentsOf: url) else { return nil }
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        return try? decoder.decode(AppData.self, from: raw)
+        ioQueue.sync { StudyFile.write(snapshot, to: url) }
     }
 }
