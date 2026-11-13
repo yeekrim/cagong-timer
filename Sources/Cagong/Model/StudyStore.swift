@@ -536,10 +536,13 @@ final class StudyStore: ObservableObject {
             .reduce(0) { $0 + seconds(for: $1, at: now) }
     }
 
-    /// 해당 월에 공부한 날 수
-    func monthStudiedDays(year: Int, month: Int) -> Int {
+    /// 해당 월에 공부한 날 수. 재는 중인 시간도 `monthTotal`과 같은 기준으로 센다 —
+    /// 안 그러면 오늘 처음 재는 동안 합계에는 들어가고 날 수에는 빠져 평균이 틀린다.
+    func monthStudiedDays(year: Int, month: Int, at now: Date = Date()) -> Int {
         let prefix = DateKey.monthPrefix(year: year, month: month)
-        return data.days.filter { $0.key.hasPrefix(prefix) && $0.value.seconds > 0 }.count
+        return data.days.keys
+            .filter { $0.hasPrefix(prefix) && seconds(for: $0, at: now) > 0 }
+            .count
     }
 
     // MARK: - 영속화

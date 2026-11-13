@@ -538,6 +538,17 @@ struct StoreTest {
         let total = s4.monthTotal(year: c.year!, month: c.month!)
         check("이번 달 합계가 오늘 기록을 포함한다", total >= s4.seconds(for: today) - 0.05)
 
+        // 오늘 처음 재는 중(아직 멈춘 적 없음)이면 저장된 초는 0이다.
+        // 그래도 합계에 들어간 날은 공부한 날로도 세야 평균이 맞는다.
+        let fresh = StudyStore(fileURL: tempFile())
+        fresh.start()
+        let later = Date().addingTimeInterval(120)
+        check("처음 재는 중인 날도 합계에 들어간다",
+              fresh.monthTotal(year: c.year!, month: c.month!, at: later) > 0)
+        check("처음 재는 중인 날도 공부한 날로 센다",
+              fresh.monthStudiedDays(year: c.year!, month: c.month!, at: later) == 1)
+        fresh.pause()
+
         for f in [file, legacyFile] { try? FileManager.default.removeItem(at: f) }
 
         print("\n" + (failures == 0 ? "전부 통과" : "\(failures)개 실패"))
