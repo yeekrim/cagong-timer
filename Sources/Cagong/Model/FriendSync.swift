@@ -24,7 +24,6 @@ final class FriendSync: ObservableObject {
     private let store: StudyStore
     private let service = FriendService()
     private var bag = Set<AnyCancellable>()
-    private var pollTask: Task<Void, Never>?
 
     /// 친구 이벤트·관계를 확인하는 간격. 공부 이벤트는 드무니 촘촘할 필요가 없다.
     private static let pollInterval: Duration = .seconds(8)
@@ -73,7 +72,8 @@ final class FriendSync: ObservableObject {
         backfillDays()   // 지난 기록 전부를 서버에 한 번 맞춰둔다(친구 월간용).
 
         // 관계·이벤트·친구 상태를 주기적으로 확인하고, 내 상태도 heartbeat로 올린다.
-        pollTask = Task { [weak self] in
+        // 앱이 살아 있는 동안 계속 돈다.
+        Task { [weak self] in
             while !Task.isCancelled {
                 await self?.refreshRelationships()
                 await self?.pollEvents()
@@ -115,12 +115,6 @@ final class FriendSync: ObservableObject {
     /// 친구의 날짜별 기록을 가져온다. 친구 월간 화면이 부른다.
     func loadMonth(of friend: Friend) async -> [DayStat]? {
         await service.dayStats(of: friend.id)
-    }
-
-    func stop() {
-        pollTask?.cancel()
-        pollTask = nil
-        bag.removeAll()
     }
 
     /// 내 이름을 바꾸면 서버에도 알린다.

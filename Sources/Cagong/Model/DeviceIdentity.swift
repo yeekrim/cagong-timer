@@ -27,10 +27,4 @@ enum DeviceIdentity {
         d.set(code, forKey: codeKey)
         return (id, code)
     }
-
-    /// 신원을 특정 값으로 못박는다(복구용).
-    static func override(id: UUID, code: String) {
-        d.set(id.uuidString, forKey: idKey)
-        d.set(code, forKey: codeKey)
-    }
 }
