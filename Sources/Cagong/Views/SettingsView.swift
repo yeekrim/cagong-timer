@@ -245,7 +245,7 @@ struct SettingsContent: View {
         }
     }
 
-    /// 고른 사진을 사용자 폴더로 복사한다. 원본은 건드리지 않는다.
+    /// 사진을 고르게 하고, 고른 사진을 넣은 뒤 마지막 사진으로 바꾼다.
     private func addPhotos() {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = true
@@ -254,20 +254,9 @@ struct SettingsContent: View {
         panel.message = "배경으로 쓸 사진을 고르세요"
         guard panel.runModal() == .OK else { return }
 
-        var lastAdded: String?
-        for source in panel.urls {
-            let destination = library.userFolder.appendingPathComponent(source.lastPathComponent)
-            try? FileManager.default.removeItem(at: destination)
-            do {
-                try FileManager.default.copyItem(at: source, to: destination)
-                lastAdded = destination.deletingPathExtension().lastPathComponent
-            } catch {
-                continue
-            }
+        if let lastAdded = library.importPhotos(from: panel.urls) {
+            store.setPhotoScene(lastAdded)
         }
-
-        library.reload()
-        if let lastAdded { store.setPhotoScene(lastAdded) }
     }
 
     // MARK: 테마

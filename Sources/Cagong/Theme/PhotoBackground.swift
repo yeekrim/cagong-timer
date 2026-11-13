@@ -135,6 +135,27 @@ final class PhotoLibrary: ObservableObject {
         return true
     }
 
+    /// 고른 사진을 사용자 폴더로 복사한다. 원본은 건드리지 않는다.
+    /// 같은 이름의 파일이 있으면 바꿔 넣는다. 복사에 실패한 사진은 건너뛴다.
+    ///
+    /// - Returns: 마지막으로 들어간 장면의 id. 하나도 못 넣었으면 nil.
+    func importPhotos(from sources: [URL]) -> String? {
+        var lastAdded: String?
+        for source in sources {
+            let destination = userFolder.appendingPathComponent(source.lastPathComponent)
+            try? FileManager.default.removeItem(at: destination)
+            do {
+                try FileManager.default.copyItem(at: source, to: destination)
+                lastAdded = destination.deletingPathExtension().lastPathComponent
+            } catch {
+                continue
+            }
+        }
+
+        reload()
+        return lastAdded
+    }
+
     func scene(id: String?) -> PhotoScene? {
         if let id, let match = scenes.first(where: { $0.id == id }) { return match }
         return scenes.first
