@@ -181,6 +181,22 @@ struct DayRecord: Codable, Sendable {
     }
 }
 
+// MARK: - 친구에게 보이는 날짜별 요약
+
+/// 친구 월간에 쓰는 하루 요약. **TODO는 담지 않는다** — 남의 할 일 내용까지
+/// 보여줄 이유가 없다. 시간과 구간(언제 앉았는지)만 서버에 올린다.
+struct DayStat: Codable, Sendable, Identifiable {
+    var dayKey: String
+    var seconds: TimeInterval
+    var goalMinutes: Int
+    var sessions: [StudySession]
+
+    var id: String { dayKey }
+
+    var firstStart: Date? { sessions.map(\.start).min() }
+    var lastEnd: Date? { sessions.compactMap(\.end).max() }
+}
+
 // MARK: - 설정
 
 /// 설정은 앞으로 계속 늘어난다(BGM 볼륨, 알림 등).

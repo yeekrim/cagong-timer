@@ -35,6 +35,9 @@ final class StudyStore: ObservableObject {
     /// 화면 전체가 다시 평가되면 안 된다. 구독하는 쪽만 받는다.
     let events = PassthroughSubject<StudyEvent, Never>()
 
+    /// 지난 기록을 손으로 고친 날. 친구 월간에 고친 값을 다시 올리라는 신호다.
+    let dayEdited = PassthroughSubject<String, Never>()
+
     /// 목표 돌파를 한 번만 알리기 위해 직전 진행률을 들고 있다.
     /// 저장하지 않는다 — 앱을 다시 켜면 지금 값에서 다시 시작하므로,
     /// 이미 넘긴 지점을 다시 알리지 않는다.
@@ -267,6 +270,24 @@ final class StudyStore: ObservableObject {
         data.days[measuringKey] = day
     }
 
+    // MARK: - 구간 고치기
+
+    /// 잘못 잰 구간을 뺀다. 그 길이만큼 그날 총합에서도 덜어낸다.
+    ///
+    /// **재는 중인 구간은 못 뺀다** — 아직 끝나지 않아 길이가 정해지지 않았고,
+    /// 빼버리면 흐르는 시간(`runStartedAt`)과 기록이 어긋난다. 멈춘 뒤에 뺀다.
+    func removeSession(_ id: UUID, on key: String) {
+        guard var day = data.days[key],
+              let idx = day.sessions.firstIndex(where: { $0.id == id }),
+              !day.sessions[idx].isOpen else { return }
+
+        let removed = day.sessions.remove(at: idx)
+        day.seconds = max(0, day.seconds - removed.length())
+        data.days[key] = day
+        save()
+        dayEdited.send(key)
+    }
+
     // MARK: - 할 일
 
     /// 오늘 기록에만 새 항목을 넣을 수 있다.
@@ -425,6 +446,34 @@ final class StudyStore: ObservableObject {
     }
 
     func friend(_ id: UUID) -> Friend? { data.friends.first { $0.id == id } }
+
+    // MARK: - 친구에게 올릴 날짜별 요약
+
+    /// 한 날의 요약(시간·목표·구간). 기록이 없으면 nil.
+    func dayStat(for key: String, at now: Date = Date()) -> DayStat? {
+        guard data.days[key] != nil else { return nil }
+        return DayStat(
+            dayKey: key,
+            seconds: seconds(for: key, at: now),
+            goalMinutes: goalMinutes(for: key),
+            sessions: sessionsForUpload(key, at: now)
+        )
+    }
+
+    /// 기록이 있는 모든 날의 요약. 서버 백필용.
+    func allDayStats(at now: Date = Date()) -> [DayStat] {
+        data.days.keys.compactMap { dayStat(for: $0, at: now) }
+    }
+
+    /// 열린 구간은 지금 시각으로 닫아서 내보낸다 — 파일에 쓸 때와 같은 규칙.
+    private func sessionsForUpload(_ key: String, at now: Date) -> [StudySession] {
+        (data.days[key]?.sessions ?? []).map { s in
+            guard s.isOpen else { return s }
+            var closed = s
+            closed.end = now
+            return closed
+        }
+    }
 
     /// 지금 내 상태. 친구에게 보여줄 presence를 만든다.
     ///

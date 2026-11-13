@@ -195,6 +195,68 @@ actor FriendService {
         _ = try? await session.data(for: req)
     }
 
+    // MARK: 날짜별 요약 (친구 월간)
+
+    /// 세션을 서버 JSON으로. Date는 ISO8601 문자열로 담는다.
+    private func sessionsJSON(_ sessions: [StudySession]) -> [[String: String]] {
+        let iso = ISO8601DateFormatter()
+        return sessions.compactMap { s in
+            guard let end = s.end else { return nil }   // 열린 구간은 올리지 않는다
+            return ["start": iso.string(from: s.start), "end": iso.string(from: end)]
+        }
+    }
+
+    /// 내 날짜별 요약을 한꺼번에 올린다(있으면 갱신). 백필·갱신 공용.
+    func pushDays(_ stats: [DayStat], for me: UUID) async {
+        guard !stats.isEmpty, var req = request(path: "/day_stats") else { return }
+        req.httpMethod = "POST"
+        req.setValue("resolution=merge-duplicates", forHTTPHeaderField: "Prefer")
+
+        let rows: [[String: Any]] = stats.map { s in
+            [
+                "user_id": me.uuidString,
+                "day_key": s.dayKey,
+                "seconds": s.seconds,
+                "goal_minutes": s.goalMinutes,
+                "sessions": sessionsJSON(s.sessions)
+            ]
+        }
+        req.httpBody = try? JSONSerialization.data(withJSONObject: rows)
+        _ = try? await session.data(for: req)
+    }
+
+    private struct DayStatRow: Decodable {
+        let day_key: String
+        let seconds: Double
+        let goal_minutes: Int
+        let sessions: [SessionRow]?
+        struct SessionRow: Decodable { let start: Date; let end: Date }
+    }
+
+    /// 친구의 날짜별 요약을 가져온다. 실패하면 nil(빈 것과 구분).
+    func dayStats(of friend: UUID) async -> [DayStat]? {
+        guard var req = request(
+            path: "/day_stats",
+            query: "user_id=eq.\(friend.uuidString)&select=day_key,seconds,goal_minutes,sessions"
+        ) else { return nil }
+        req.httpMethod = "GET"
+
+        guard let (data, _) = try? await session.data(for: req),
+              let rows = try? decoder.decode([DayStatRow].self, from: data)
+        else { return nil }
+
+        return rows.map { r in
+            DayStat(
+                dayKey: r.day_key,
+                seconds: r.seconds,
+                goalMinutes: r.goal_minutes,
+                sessions: (r.sessions ?? []).map {
+                    StudySession(start: $0.start, end: $0.end)
+                }
+            )
+        }
+    }
+
     // MARK: 현재 상태 (presence)
 
     /// 내 현재 상태를 서버에 올린다(있으면 갱신). 친구 탭이 이걸 읽는다.

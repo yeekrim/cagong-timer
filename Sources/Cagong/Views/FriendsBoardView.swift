@@ -9,11 +9,18 @@ struct FriendsBoardView: View {
     @EnvironmentObject private var friendSync: FriendSync
     let theme: Theme
 
+    /// 월간을 펼쳐 볼 친구. nil이면 시트 닫힘.
+    @State private var opened: Friend?
+
     var body: some View {
         VStack(spacing: 0) {
             Spacer(minLength: 8)
             card
             Spacer(minLength: 8)
+        }
+        .sheet(item: $opened) { friend in
+            FriendMonthlyView(friend: friend, theme: theme)
+                .environmentObject(friendSync)
         }
     }
 
@@ -123,6 +130,10 @@ struct FriendsBoardView: View {
             RoundedRectangle(cornerRadius: 13, style: .continuous)
                 .fill(theme.p.ink.opacity(theme.isDark ? 0.10 : 0.035))
         )
+        // 누르면 그 친구의 월간 기록을 연다.
+        .contentShape(Rectangle())
+        .onTapGesture { opened = status.friend }
+        .help("\(status.friend.name.isEmpty ? "이 친구" : status.friend.name) 님의 월간 기록 보기")
     }
 
     private func avatar(_ status: FriendStatus) -> some View {

@@ -203,7 +203,8 @@ struct MonthlyView: View {
                                         ? store.record(for: key)?.endedAt : nil,
                                     inProgress: store.isMeasuring(key),
                                     theme: theme,
-                                    onToggle: { store.toggleTodo($0, on: key) }
+                                    onToggle: { store.toggleTodo($0, on: key) },
+                                    onRemoveSession: { store.removeSession($0, on: key) }
                                 )
                             }
                         } else {
@@ -245,7 +246,26 @@ struct MonthlyView: View {
     }
 
     /// 1일 앞의 빈 칸을 채우고 7개씩 끊는다.
-    private var weeks: [[Date?]] {
+    private var weeks: [[Date?]] { MonthGrid.weeks(year: year, month: month) }
+
+    private func step(_ delta: Int) {
+        withAnimation(Motion.screen) {
+            var m = month + delta
+            var y = year
+            if m > 12 { m = 1; y += 1 }
+            if m < 1 { m = 12; y -= 1 }
+            month = m
+            year = y
+        }
+    }
+}
+
+// MARK: - 달력 격자 계산
+
+/// 월 달력의 주 배열을 만든다. 내 먼슬리와 친구 먼슬리가 같이 쓴다.
+enum MonthGrid {
+    /// 1일 앞의 빈 칸을 채우고 7개씩 끊는다. 빈 칸은 nil.
+    static func weeks(year: Int, month: Int) -> [[Date?]] {
         let cal = Calendar.current
         guard
             let first = cal.date(from: DateComponents(year: year, month: month, day: 1)),
@@ -263,23 +283,13 @@ struct MonthlyView: View {
             Array(cells[$0..<min($0 + 7, cells.count)])
         }
     }
-
-    private func step(_ delta: Int) {
-        withAnimation(Motion.screen) {
-            var m = month + delta
-            var y = year
-            if m > 12 { m = 1; y += 1 }
-            if m < 1 { m = 12; y -= 1 }
-            month = m
-            year = y
-        }
-    }
 }
 
 // MARK: - 날짜 칸
 
 /// 하루 한 칸. 그날 공부한 만큼 아래에서 채워진다.
-private struct DayCell: View {
+/// 내 먼슬리와 친구 먼슬리가 같이 쓴다.
+struct DayCell: View {
     let date: Date
     let seconds: TimeInterval
     let goalSeconds: TimeInterval
@@ -402,9 +412,15 @@ private struct DayDetail: View {
     let theme: Theme
     /// 체크는 지난 날에도 언제든 바꿀 수 있다. 글자는 못 고친다.
     let onToggle: (UUID) -> Void
+    /// 잘못 잰 구간을 뺀다. 그 길이만큼 총합도 줄어든다.
+    let onRemoveSession: (UUID) -> Void
 
     /// 구간 목록은 접어둔다. 자세히 보고 싶을 때만 편다.
     @State private var showSessions = false
+    /// 마우스가 올라간 구간. 빼기 버튼은 이때만 보인다.
+    @State private var hoveredSession: UUID?
+    /// 한 번 누른 빼기 버튼. 한 번 더 눌러야 실제로 빠진다 — 실수로 기록을 날리지 않게.
+    @State private var armedSession: UUID?
 
     private var doneCount: Int { todos.filter(\.done).count }
 
@@ -449,10 +465,8 @@ private struct DayDetail: View {
         var h: CGFloat = 92                       // 머리(날짜·총시간)
         if !sessions.isEmpty {
             h += 48                               // 시작·마무리 줄
-            if sessions.count > 1 {
-                h += 40                           // 펼치기 토글
-                if showSessions { h += CGFloat(sessions.count) * 24 + 12 }
-            }
+            h += 40                               // 펼치기 토글
+            if showSessions { h += CGFloat(sessions.count) * 24 + 12 }
         }
         h += todos.isEmpty ? 48 : (12 + CGFloat(todos.count) * 34)
         return h
@@ -528,7 +542,7 @@ private struct DayDetail: View {
         .frame(maxWidth: .infinity)
     }
 
-    /// 구간이 여럿이면 어떻게 쪼개 앉았는지도 보여준다.
+    /// 어떻게 쪼개 앉았는지 보여준다. 한 번만 잰 날도 둔다 — 그 구간을 뺄 수 있어야 한다.
     ///
     /// **접어둔다.** 잠깐씩 여러 번 눌렀다 뗀 날은 구간이 수십 개가 되는데,
     /// 그게 다 펼쳐져 있으면 정작 보려던 시간과 할 일이 밀려난다.
@@ -536,24 +550,22 @@ private struct DayDetail: View {
     /// 구간 목록. 펼치면 바깥 스크롤이 통째로 받아주므로 여기엔 스크롤을 두지 않는다.
     @ViewBuilder
     private var sessionList: some View {
-        if sessions.count > 1 {
-            Divider().overlay(theme.p.cardStroke.opacity(0.6))
+        Divider().overlay(theme.p.cardStroke.opacity(0.6))
 
-            VStack(alignment: .leading, spacing: 0) {
-                sessionToggle
+        VStack(alignment: .leading, spacing: 0) {
+            sessionToggle
 
-                if showSessions {
-                    VStack(alignment: .leading, spacing: 6) {
-                        ForEach(sessions) { session in
-                            sessionRow(session)
-                        }
+            if showSessions {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(sessions) { session in
+                        sessionRow(session)
                     }
-                    .padding(.bottom, 12)
-                    .transition(.opacity)
                 }
+                .padding(.bottom, 12)
+                .transition(.opacity)
             }
-            .padding(.horizontal, 18)
         }
+        .padding(.horizontal, 18)
     }
 
     private var sessionToggle: some View {
@@ -566,7 +578,7 @@ private struct DayDetail: View {
                     .foregroundStyle(theme.p.inkSoft.opacity(0.7))
                     .rotationEffect(.degrees(showSessions ? 90 : 0))
 
-                Text("\(sessions.count)번 나눠서 했어요")
+                Text(sessions.count > 1 ? "\(sessions.count)번 나눠서 했어요" : "한 번에 했어요")
                     .font(Typo.body(11.5))
                     .foregroundStyle(theme.p.inkSoft)
 
@@ -580,7 +592,12 @@ private struct DayDetail: View {
     }
 
     private func sessionRow(_ session: StudySession) -> some View {
-        HStack(spacing: 8) {
+        let armed = armedSession == session.id
+        // 재는 중인 구간은 아직 길이가 정해지지 않아 뺄 수 없다.
+        let removable = !session.isOpen
+        let showButton = removable && (armed || hoveredSession == session.id)
+
+        return HStack(spacing: 8) {
             Text(KoDate.hourMinute(session.start)
                  + " – "
                  + (session.end.map(KoDate.hourMinute) ?? "…"))
@@ -593,6 +610,46 @@ private struct DayDetail: View {
             Text(TimeFormat.human(session.length()))
                 .font(Typo.body(11.5))
                 .foregroundStyle(theme.p.inkSoft.opacity(0.85))
+                .strikethrough(armed, color: theme.p.inkSoft.opacity(0.6))
+
+            Button {
+                if armed {
+                    withAnimation(Motion.button) {
+                        armedSession = nil
+                        onRemoveSession(session.id)
+                    }
+                } else {
+                    withAnimation(Motion.button) { armedSession = session.id }
+                }
+            } label: {
+                Group {
+                    if armed {
+                        Text("빼기")
+                            .font(Typo.bodyStrong(11))
+                            .foregroundStyle(.red.opacity(0.85))
+                    } else {
+                        Image(systemName: "minus.circle")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(theme.p.inkSoft.opacity(0.8))
+                    }
+                }
+                .frame(minWidth: 28, alignment: .trailing)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(PressableStyle(scale: 0.95))
+            .opacity(showButton ? 1 : 0)
+            .allowsHitTesting(showButton)
+            .help(armed ? "한 번 더 누르면 이 구간을 빼요" : "잘못 잰 구간 빼기")
+        }
+        .contentShape(Rectangle())
+        .onHover { inside in
+            if inside {
+                hoveredSession = session.id
+            } else if hoveredSession == session.id {
+                hoveredSession = nil
+                // 다른 데로 가면 확인 상태도 풀어둔다.
+                if armed { withAnimation(Motion.button) { armedSession = nil } }
+            }
         }
     }
 

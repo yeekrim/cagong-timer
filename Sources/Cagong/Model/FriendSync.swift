@@ -47,16 +47,30 @@ final class FriendSync: ObservableObject {
                 let id = self.store.profile.id
                 Task { await self.service.send(event, from: id) }
                 self.pushPresence()
+                self.pushToday()
             }
             .store(in: &bag)
 
-        // 시작·멈춤이 바뀌면(공부↔휴식) 상태를 바로 올린다.
+        // 지난 기록을 고치면 그날 요약을 다시 올린다.
+        store.dayEdited
+            .sink { [weak self] key in
+                guard let self, let stat = self.store.dayStat(for: key) else { return }
+                let me = self.store.profile.id
+                Task { await self.service.pushDays([stat], for: me) }
+            }
+            .store(in: &bag)
+
+        // 시작·멈춤이 바뀌면(공부↔휴식) 상태·오늘 요약을 바로 올린다.
         store.$isRunning
             .removeDuplicates()
-            .sink { [weak self] _ in self?.pushPresence() }
+            .sink { [weak self] _ in
+                self?.pushPresence()
+                self?.pushToday()
+            }
             .store(in: &bag)
 
         pushPresence()   // 켜자마자 지금 상태를 한 번 올린다.
+        backfillDays()   // 지난 기록 전부를 서버에 한 번 맞춰둔다(친구 월간용).
 
         // 관계·이벤트·친구 상태를 주기적으로 확인하고, 내 상태도 heartbeat로 올린다.
         pollTask = Task { [weak self] in
@@ -64,8 +78,11 @@ final class FriendSync: ObservableObject {
                 await self?.refreshRelationships()
                 await self?.pollEvents()
                 await self?.refreshBoard()
-                // 재는 중이면 초가 흐르므로 heartbeat로 갱신해 친구 화면이 따라오게 한다.
-                if self?.store.isRunning == true { self?.pushPresence() }
+                // 재는 중이면 초가 흐르므로 heartbeat로 상태·오늘 요약을 갱신한다.
+                if self?.store.isRunning == true {
+                    self?.pushPresence()
+                    self?.pushToday()
+                }
                 try? await Task.sleep(for: Self.pollInterval)
             }
         }
@@ -77,6 +94,27 @@ final class FriendSync: ObservableObject {
         let me = store.profile.id
         let presence = store.myPresence()
         Task { await service.pushPresence(presence, for: me) }
+    }
+
+    /// 지금 재고 있는 날의 요약을 올린다(친구 월간이 최신을 보게).
+    private func pushToday() {
+        guard SupabaseConfig.isConfigured,
+              let stat = store.dayStat(for: store.measuringKey) else { return }
+        let me = store.profile.id
+        Task { await service.pushDays([stat], for: me) }
+    }
+
+    /// 지난 기록 전부를 서버에 맞춘다. 앱 시작에 한 번.
+    private func backfillDays() {
+        guard SupabaseConfig.isConfigured else { return }
+        let me = store.profile.id
+        let stats = store.allDayStats()
+        Task { await service.pushDays(stats, for: me) }
+    }
+
+    /// 친구의 날짜별 기록을 가져온다. 친구 월간 화면이 부른다.
+    func loadMonth(of friend: Friend) async -> [DayStat]? {
+        await service.dayStats(of: friend.id)
     }
 
     func stop() {
