@@ -116,7 +116,7 @@ struct FriendsBoardView: View {
 
             VStack(alignment: .leading, spacing: 5) {
                 HStack(spacing: 7) {
-                    Text(status.friend.name.isEmpty ? "이름 없음" : status.friend.name)
+                    Text(status.friend.displayName)
                         .font(Typo.bodyStrong(14))
                         .foregroundStyle(theme.p.ink)
                     statusChip(status.activity)
@@ -206,9 +206,6 @@ struct FriendsBoardView: View {
         if status.activity == .idle { return "—" }
         let done = TimeFormat.human(status.liveSeconds(at: now))
         guard status.goalMinutes > 0 else { return done }
-        let goalH = status.goalMinutes / 60
-        let goalM = status.goalMinutes % 60
-        let goal = goalM == 0 ? "\(goalH)시간" : "\(goalH)시간 \(goalM)분"
-        return "\(done) / \(goal)"
+        return "\(done) / \(TimeFormat.goal(minutes: status.goalMinutes))"
     }
 }

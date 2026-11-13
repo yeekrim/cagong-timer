@@ -537,7 +537,7 @@ final class StudyStore: ObservableObject {
 
     /// 해당 월의 총 공부시간
     func monthTotal(year: Int, month: Int, at now: Date = Date()) -> TimeInterval {
-        let prefix = String(format: "%04d-%02d", year, month)
+        let prefix = DateKey.monthPrefix(year: year, month: month)
         return data.days.keys
             .filter { $0.hasPrefix(prefix) }
             .reduce(0) { $0 + seconds(for: $1, at: now) }
@@ -545,7 +545,7 @@ final class StudyStore: ObservableObject {
 
     /// 해당 월에 공부한 날 수
     func monthStudiedDays(year: Int, month: Int) -> Int {
-        let prefix = String(format: "%04d-%02d", year, month)
+        let prefix = DateKey.monthPrefix(year: year, month: month)
         return data.days.filter { $0.key.hasPrefix(prefix) && $0.value.seconds > 0 }.count
     }
 

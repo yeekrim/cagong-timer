@@ -35,7 +35,7 @@ struct FriendMonthlyView: View {
 
     private var titleBar: some View {
         HStack {
-            Text(friend.name.isEmpty ? "이름 없음" : friend.name)
+            Text(friend.displayName)
                 .font(Typo.title(17))
                 .foregroundStyle(theme.p.ink)
             Spacer()
@@ -190,7 +190,7 @@ struct FriendMonthlyView: View {
 
     // MARK: 계산
 
-    private var monthPrefix: String { String(format: "%04d-%02d", year, month) }
+    private var monthPrefix: String { DateKey.monthPrefix(year: year, month: month) }
     private var monthStats: [DayStat] { stats.values.filter { $0.dayKey.hasPrefix(monthPrefix) } }
     private var monthTotal: TimeInterval { monthStats.reduce(0) { $0 + $1.seconds } }
     private var studiedDays: Int { monthStats.filter { $0.seconds > 0 }.count }

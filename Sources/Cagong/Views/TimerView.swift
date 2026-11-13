@@ -312,7 +312,7 @@ struct TimerView: View {
 
     private func goalText(progress: Double) -> String {
         let goal = store.goalMinutes(for: store.measuringKey)
-        let text = goal % 60 == 0 ? "\(goal / 60)시간" : "\(goal / 60)시간 \(goal % 60)분"
+        let text = TimeFormat.goal(minutes: goal)
         if progress >= 1 { return "목표 \(text) 달성" }
         return "목표 \(text) 중 \(Int(progress * 100))%"
     }
@@ -332,8 +332,7 @@ struct TimerView: View {
             }
 
             HStack {
-                Text(minutes % 60 == 0 ? "\(minutes / 60)시간"
-                                       : "\(minutes / 60)시간 \(minutes % 60)분")
+                Text(TimeFormat.goal(minutes: minutes))
                     .font(Typo.title(19))
                     .foregroundStyle(theme.p.ink)
                     .contentTransition(.numericText())

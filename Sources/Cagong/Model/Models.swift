@@ -11,6 +11,11 @@ enum DateKey {
 
     static func today() -> String { string(from: Date()) }
 
+    /// 그 달의 키 앞부분. "2026-07" — 날짜 키를 `hasPrefix`로 거를 때 쓴다.
+    static func monthPrefix(year: Int, month: Int) -> String {
+        String(format: "%04d-%02d", year, month)
+    }
+
     static func yesterday() -> String {
         let d = Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date()
         return string(from: d)
@@ -289,6 +294,9 @@ struct Friend: Codable, Sendable, Identifiable, Hashable {
         self.name = name
         self.code = code
     }
+
+    /// 화면에 보이는 이름. 비워둔 친구는 "이름 없음".
+    var displayName: String { name.isEmpty ? "이름 없음" : name }
 }
 
 // MARK: - 친구 현재 상태 (presence)
@@ -492,6 +500,11 @@ enum TimeFormat {
         if h == 0 { return "\(m)분" }
         if m == 0 { return "\(h)시간" }
         return "\(h)시간 \(m)분"
+    }
+
+    /// 목표 시간 표기. "2시간" / "1시간 30분" / "0시간 30분" — 0시간도 그대로 쓴다.
+    static func goal(minutes: Int) -> String {
+        minutes % 60 == 0 ? "\(minutes / 60)시간" : "\(minutes / 60)시간 \(minutes % 60)분"
     }
 
     /// 먼슬리 셀에 들어가는 짧은 표기. "3h20" / "45m"

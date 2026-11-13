@@ -174,7 +174,7 @@ struct FriendsSection: View {
             avatar(person.name)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(person.name.isEmpty ? "이름 없음" : person.name)
+                Text(person.displayName)
                     .font(Typo.bodyStrong(13.5))
                     .foregroundStyle(theme.p.ink)
                 Text("친구 요청")
@@ -215,7 +215,7 @@ struct FriendsSection: View {
             avatar(friend.name)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(friend.name.isEmpty ? "이름 없음" : friend.name)
+                Text(friend.displayName)
                     .font(Typo.bodyStrong(13.5))
                     .foregroundStyle(theme.p.ink)
                 Text(friend.code)
