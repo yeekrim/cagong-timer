@@ -93,7 +93,7 @@ struct TimerView: View {
                     if let label {
                         Text(label)
                             .font(Typo.body(11.5))
-                            .foregroundStyle(theme.isDark ? Color(hex: 0x14161E) : .white)
+                            .foregroundStyle(theme.onAccent)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 5)
                             .background(Capsule().fill(theme.p.accent))

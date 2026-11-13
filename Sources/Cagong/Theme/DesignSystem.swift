@@ -213,7 +213,7 @@ struct PrimaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(Typo.bodyStrong(15))
-            .foregroundStyle(theme.isDark ? Color(hex: 0x14161E) : .white)
+            .foregroundStyle(theme.onAccent)
             .padding(.horizontal, wide ? 34 : 24)
             .padding(.vertical, 12)
             .background(

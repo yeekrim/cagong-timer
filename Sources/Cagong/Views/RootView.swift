@@ -186,7 +186,7 @@ struct RootView: View {
                 .font(Typo.bodyStrong(13))
                 .foregroundStyle(
                     selected
-                    ? (theme.isDark ? Color(hex: 0x14161E) : .white)
+                    ? theme.onAccent
                     : theme.p.inkSoft
                 )
                 .padding(.horizontal, 17)

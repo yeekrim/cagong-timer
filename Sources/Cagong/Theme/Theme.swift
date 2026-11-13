@@ -79,6 +79,9 @@ struct Theme: Identifiable {
 
     var colorScheme: ColorScheme { isDark ? .dark : .light }
 
+    /// 강조색(accent)·커피 위에 얹는 글자색. 어두운 테마에서는 강조색이 밝아서 글자를 어둡게 한다.
+    var onAccent: Color { isDark ? Color(hex: 0x14161E) : .white }
+
     static func by(_ id: ThemeID) -> Theme {
         all.first { $0.id == id } ?? all[0]
     }

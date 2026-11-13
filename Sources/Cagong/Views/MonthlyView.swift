@@ -375,7 +375,7 @@ struct DayCell: View {
     }
 
     /// 커피 위에 얹힌 글자색.
-    private var onCoffee: Color { theme.isDark ? Color(hex: 0x14161E) : .white }
+    private var onCoffee: Color { theme.onAccent }
 
     /// 날짜 숫자는 칸 위쪽(아래에서 약 74% 높이)에 있다.
     /// 커피가 거기까지 차올랐을 때만 글자를 뒤집는다.

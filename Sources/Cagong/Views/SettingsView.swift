@@ -72,7 +72,7 @@ struct SettingsView: View {
                 .font(Typo.bodyStrong(13))
                 .foregroundStyle(
                     selected
-                    ? (theme.isDark ? Color(hex: 0x14161E) : .white)
+                    ? theme.onAccent
                     : theme.p.inkSoft
                 )
                 .frame(maxWidth: .infinity)
