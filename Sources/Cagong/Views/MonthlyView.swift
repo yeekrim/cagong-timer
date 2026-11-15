@@ -61,11 +61,9 @@ struct MonthlyView: View {
     private var header: some View {
         HStack(spacing: 16) {
             DrinkGlass(
-                running: store.isRunning,
                 theme: theme,
                 drink: store.drink,
-                side: 46,
-                compact: true
+                side: 46
             )
             .matchedGeometryEffect(id: "cup", in: namespace)
 
