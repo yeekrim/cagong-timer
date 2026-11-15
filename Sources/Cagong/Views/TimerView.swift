@@ -8,6 +8,7 @@ import SwiftUI
 /// 어제를 재야 할 때(새벽까지 공부한 경우)만 날짜를 눌러 바꾼다.
 struct TimerView: View {
     @EnvironmentObject private var store: StudyStore
+    @EnvironmentObject private var notepad: StudyNotepad
     let theme: Theme
     /// 화면을 넘어갈 때 잔이 함께 날아가도록 공유하는 이름 공간
     let namespace: Namespace.ID
@@ -265,10 +266,19 @@ struct TimerView: View {
 
     // MARK: 메모지
 
+    private var memo: some View {
+        VStack(spacing: 18) {
+            todoSlip
+            notepadSlip
+                .zIndex(1)
+        }
+        .zIndex(1)
+    }
+
     /// 지난 날의 할 일은 글자를 고칠 수 없다. 체크만 열려 있다.
     ///
     /// 루틴 고정도 오늘에서만 바꾼다 — 어제의 압정을 눌러 내일이 바뀌면 헷갈린다.
-    private var memo: some View {
+    private var todoSlip: some View {
         MemoSlip(
             todos: store.todos,
             theme: theme,
@@ -277,6 +287,23 @@ struct TimerView: View {
             onRemove: store.canEditTodoText ? { store.removeTodo($0) } : nil,
             onPin: store.canEditTodoText ? { store.togglePin($0) } : nil
         )
+    }
+
+    private var notepadSlip: some View {
+        MemoPaper(theme: theme) {
+            Text("메모")
+                .font(Typo.bodyStrong(14))
+                .foregroundStyle(theme.p.memoInk)
+        } content: {
+            TextEditor(text: $notepad.text)
+                .font(Typo.body(14))
+                .foregroundStyle(theme.p.memoInk)
+                .scrollContentBackground(.hidden)
+                .frame(height: 124)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .accessibilityLabel("메모")
+        }
     }
 
     // MARK: 마무리

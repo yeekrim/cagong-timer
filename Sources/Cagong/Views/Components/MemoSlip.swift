@@ -22,12 +22,9 @@ struct MemoSlip: View {
     private var doneCount: Int { todos.filter(\.done).count }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        MemoPaper(theme: theme) {
             header
-            Divider()
-                .overlay(theme.p.memoInk.opacity(0.18))
-                .padding(.horizontal, 18)
-
+        } content: {
             if todos.isEmpty {
                 emptyState
             } else {
@@ -38,11 +35,6 @@ struct MemoSlip: View {
                 addRow(onAdd)
             }
         }
-        .frame(width: 268)
-        .background(paper)
-        .overlay(alignment: .top) { tape }
-        .rotationEffect(.degrees(-1.4))
-        .shadow(color: .black.opacity(theme.p.shadow * 0.9), radius: 16, x: 2, y: 10)
     }
 
     // MARK: 조각
@@ -61,9 +53,6 @@ struct MemoSlip: View {
                     .animation(Motion.digit, value: doneCount)
             }
         }
-        .padding(.horizontal, 18)
-        .padding(.top, 26)
-        .padding(.bottom, 12)
     }
 
     private var emptyState: some View {
@@ -230,6 +219,32 @@ struct MemoSlip: View {
         withAnimation(Motion.paper) { onAdd(text) }
         draft = ""
         addFocused = true
+    }
+}
+
+struct MemoPaper<Header: View, Content: View>: View {
+    let theme: Theme
+    @ViewBuilder let header: () -> Header
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            header()
+                .padding(.horizontal, 18)
+                .padding(.top, 26)
+                .padding(.bottom, 12)
+
+            Divider()
+                .overlay(theme.p.memoInk.opacity(0.18))
+                .padding(.horizontal, 18)
+
+            content()
+        }
+        .frame(width: 268)
+        .background(paper)
+        .overlay(alignment: .top) { tape.allowsHitTesting(false) }
+        .rotationEffect(.degrees(-1.4))
+        .shadow(color: .black.opacity(theme.p.shadow * 0.9), radius: 16, x: 2, y: 10)
     }
 
     /// 메모지 종이 — 아래로 갈수록 살짝 그늘진다.

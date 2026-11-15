@@ -73,6 +73,7 @@ struct Snapshot {
         let view = RootView(initialTab: tab)
             .environmentObject(store)
             .environmentObject(FriendSync(store: store))
+            .environmentObject(StudyNotepad(databaseURL: tempStore()))
             .frame(width: 1000, height: 730)
 
         write(view, name: name, to: dir)
