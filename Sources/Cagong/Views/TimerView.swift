@@ -60,7 +60,7 @@ struct TimerView: View {
                     mainCard
                         .alignmentGuide(.memoGap) { $0[VerticalAlignment.center] }
                     memo
-                        .padding(.leading, -22)
+                        .padding(.leading, -Self.memoOverlap)
                         .padding(.top, 34)
                 }
             }
@@ -159,6 +159,8 @@ struct TimerView: View {
     /// 카드 폭. 좁은 창에서도 이 값은 줄이지 않는다 —
     /// 여기서 한 칸이라도 깎으면 시간 숫자가 카드를 뚫고 나간다.
     static let cardWidth: CGFloat = 468
+    private static let memoOverlap: CGFloat = 22
+    static let sideBySideWidth = cardWidth + MemoPaperMetrics.width - memoOverlap
 
     /// 카드는 한 덩어리다.
     /// 카드 468 − 좌우 여백 56 − 잔 120 − 간격 22 = 270 ≥ 4.2 × 60 = 252.

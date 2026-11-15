@@ -222,6 +222,10 @@ struct MemoSlip: View {
     }
 }
 
+enum MemoPaperMetrics {
+    static let width: CGFloat = 268
+}
+
 struct MemoPaper<Header: View, Content: View>: View {
     let theme: Theme
     @ViewBuilder let header: () -> Header
@@ -240,7 +244,7 @@ struct MemoPaper<Header: View, Content: View>: View {
 
             content()
         }
-        .frame(width: 268)
+        .frame(width: MemoPaperMetrics.width)
         .background(paper)
         .overlay(alignment: .top) { tape.allowsHitTesting(false) }
         .rotationEffect(.degrees(-1.4))

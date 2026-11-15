@@ -11,6 +11,7 @@ struct RootView: View {
 
     @State private var tab: Tab = .study
     @State private var showSettings = false
+    @State private var studyContentHeight: CGFloat = 0
 
     /// 화면을 넘어갈 때 컵이 두 화면 사이를 날아간다.
     @Namespace private var cupSpace
@@ -36,18 +37,20 @@ struct RootView: View {
             VStack(spacing: 0) {
                 topBar(compactArrows: !floatingArrows)
 
-                // 남은 자리에 본문을 담고, 모자라면 스크롤로 받아준다.
-                // 이게 있어야 창을 어디까지 줄여도 잘려서 못 쓰는 상태가 안 된다.
                 GeometryReader { inner in
-                    ScrollView([.horizontal, .vertical], showsIndicators: false) {
-                        content
-                            .padding(.horizontal, floatingArrows ? contentInset : narrowInset)
-                            .padding(.bottom, bottomInset)
-                            // 자리가 남을 때는 스크롤이 아니라 가운데 정렬이 되게 한다.
-                            .frame(
-                                minWidth: inner.size.width,
-                                minHeight: inner.size.height
-                            )
+                    let inset = floatingArrows ? contentInset : narrowInset
+                    if tab == .study {
+                        fixedStudyContent(in: inner.size, inset: inset)
+                    } else {
+                        ScrollView([.horizontal, .vertical], showsIndicators: false) {
+                            content
+                                .padding(.horizontal, inset)
+                                .padding(.bottom, bottomInset)
+                                .frame(
+                                    minWidth: inner.size.width,
+                                    minHeight: inner.size.height
+                                )
+                        }
                     }
                 }
             }
@@ -242,6 +245,26 @@ struct RootView: View {
 
     // MARK: 본문
 
+    private func fixedStudyContent(in viewport: CGSize, inset: CGFloat) -> some View {
+        let availableWidth = max(1, viewport.width - inset * 2)
+        let availableHeight = max(1, viewport.height - bottomInset)
+        let minimumWidth = store.isDayOpen ? TimerView.sideBySideWidth : 0
+        let layoutWidth = max(availableWidth, minimumWidth)
+        let scale = min(1, availableWidth / layoutWidth, availableHeight / max(1, studyContentHeight))
+
+        return content
+            .frame(width: layoutWidth)
+            .fixedSize(horizontal: false, vertical: true)
+            .background {
+                GeometryReader { geometry in
+                    Color.clear.preference(key: StudyContentHeightKey.self, value: geometry.size.height)
+                }
+            }
+            .onPreferenceChange(StudyContentHeightKey.self) { studyContentHeight = $0 }
+            .scaleEffect(scale)
+            .frame(width: viewport.width, height: availableHeight)
+    }
+
     @ViewBuilder
     private var content: some View {
         switch tab {
@@ -267,5 +290,13 @@ struct RootView: View {
             insertion: .opacity.combined(with: .offset(y: 16)),
             removal: .opacity.combined(with: .offset(y: -12))
         )
+    }
+}
+
+private struct StudyContentHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
     }
 }
