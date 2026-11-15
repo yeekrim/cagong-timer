@@ -8,6 +8,7 @@ import SwiftUI
 /// 어제를 재야 할 때(새벽까지 공부한 경우)만 날짜를 눌러 바꾼다.
 struct TimerView: View {
     @EnvironmentObject private var store: StudyStore
+    @EnvironmentObject private var notepad: StudyNotepad
     let theme: Theme
     /// 화면을 넘어갈 때 잔이 함께 날아가도록 공유하는 이름 공간
     let namespace: Namespace.ID
@@ -23,8 +24,8 @@ struct TimerView: View {
         // 카드(468)와 메모지(268)는 폭이 고정이라 나란히 두면 714가 필요하다.
         // 자리가 없을 때 겹치거나 잘리는 대신 세로로 쌓으면 468이면 된다.
         ViewThatFits(in: .horizontal) {
-            layout(stacked: false)
-            layout(stacked: true)
+            sideBySideLayout
+            stackedLayout
         }
         .confirmationDialog(
             store.isMeasuringPastDay ? "어제 기록을 마칠까요?" : "오늘 공부를 마칠까요?",
@@ -40,34 +41,38 @@ struct TimerView: View {
         }
     }
 
-    /// - Parameter stacked: 메모지를 카드 옆이 아니라 아래에 둘지.
-    private func layout(stacked: Bool) -> some View {
-        VStack(spacing: 0) {
-            Spacer(minLength: 8)
+    private var sideBySideLayout: some View {
+        HStack(alignment: .center, spacing: 0) {
+            mainCard
+            memo
+                .padding(.leading, -Self.memoOverlap)
+        }
+        // 날짜와 마무리 버튼에 같은 높이를 남겨 카드의 중앙을 유지한다.
+        .padding(.vertical, 52)
+        .overlay(alignment: .top) {
+            dateBar
+                .frame(width: Self.cardWidth)
+        }
+        .overlay(alignment: .bottom) {
+            endButton
+        }
+    }
 
+    private var stackedLayout: some View {
+        VStack(spacing: 0) {
             dateBar
                 .frame(width: Self.cardWidth)
                 .padding(.bottom, 12)
 
-            if stacked {
-                VStack(spacing: 16) {
-                    mainCard
-                    memo
-                }
-            } else {
-                HStack(alignment: .top, spacing: 0) {
-                    mainCard
-                    memo
-                        .padding(.leading, -22)
-                        .padding(.top, 34)
-                }
-            }
+            mainCard
+
+            memo
+                .padding(.top, 16)
 
             endButton
                 .padding(.top, 26)
-
-            Spacer(minLength: 8)
         }
+        .padding(.vertical, 8)
     }
 
     // MARK: 날짜 · 시각
@@ -157,6 +162,8 @@ struct TimerView: View {
     /// 카드 폭. 좁은 창에서도 이 값은 줄이지 않는다 —
     /// 여기서 한 칸이라도 깎으면 시간 숫자가 카드를 뚫고 나간다.
     static let cardWidth: CGFloat = 468
+    private static let memoOverlap: CGFloat = 22
+    static let sideBySideWidth = cardWidth + MemoPaperMetrics.width - memoOverlap
 
     /// 카드는 한 덩어리다.
     /// 카드 468 − 좌우 여백 56 − 잔 120 − 간격 22 = 270 ≥ 4.2 × 60 = 252.
@@ -265,10 +272,21 @@ struct TimerView: View {
 
     // MARK: 메모지
 
+    private static let memoSpacing: CGFloat = 18
+
+    private var memo: some View {
+        VStack(spacing: Self.memoSpacing) {
+            todoSlip
+            notepadSlip
+                .zIndex(1)
+        }
+        .zIndex(1)
+    }
+
     /// 지난 날의 할 일은 글자를 고칠 수 없다. 체크만 열려 있다.
     ///
     /// 루틴 고정도 오늘에서만 바꾼다 — 어제의 압정을 눌러 내일이 바뀌면 헷갈린다.
-    private var memo: some View {
+    private var todoSlip: some View {
         MemoSlip(
             todos: store.todos,
             theme: theme,
@@ -277,6 +295,23 @@ struct TimerView: View {
             onRemove: store.canEditTodoText ? { store.removeTodo($0) } : nil,
             onPin: store.canEditTodoText ? { store.togglePin($0) } : nil
         )
+    }
+
+    private var notepadSlip: some View {
+        MemoPaper(theme: theme) {
+            Text("메모")
+                .font(Typo.bodyStrong(14))
+                .foregroundStyle(theme.p.memoInk)
+        } content: {
+            TextEditor(text: $notepad.text)
+                .font(Typo.body(14))
+                .foregroundStyle(theme.p.memoInk)
+                .scrollContentBackground(.hidden)
+                .frame(height: 124)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .accessibilityLabel("메모")
+        }
     }
 
     // MARK: 마무리
