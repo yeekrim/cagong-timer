@@ -56,8 +56,9 @@ struct TimerView: View {
                     memo
                 }
             } else {
-                HStack(alignment: .top, spacing: 0) {
+                HStack(alignment: .memoGap, spacing: 0) {
                     mainCard
+                        .alignmentGuide(.memoGap) { $0[VerticalAlignment.center] }
                     memo
                         .padding(.leading, -22)
                         .padding(.top, 34)
@@ -266,9 +267,12 @@ struct TimerView: View {
 
     // MARK: 메모지
 
+    private static let memoSpacing: CGFloat = 18
+
     private var memo: some View {
-        VStack(spacing: 18) {
+        VStack(spacing: Self.memoSpacing) {
             todoSlip
+                .alignmentGuide(.memoGap) { $0[VerticalAlignment.bottom] + Self.memoSpacing / 2 }
             notepadSlip
                 .zIndex(1)
         }
@@ -313,4 +317,14 @@ struct TimerView: View {
             .buttonStyle(GhostButtonStyle(theme: theme))
             .help("그날 몫을 마무리합니다. 기록은 그대로 남고 다시 시작할 수 있어요")
     }
+}
+
+private extension VerticalAlignment {
+    enum MemoGap: AlignmentID {
+        static func defaultValue(in dimensions: ViewDimensions) -> CGFloat {
+            dimensions[VerticalAlignment.center]
+        }
+    }
+
+    static let memoGap = VerticalAlignment(MemoGap.self)
 }
