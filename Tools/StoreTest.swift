@@ -506,6 +506,21 @@ struct StoreTest {
         check("오래 끊기면 away", r2.activity == .away)
         check("away면 시간을 이어주지 않는다", abs(r2.seconds - 600) < 0.1)
 
+        let bedtime = DateKey.date(from: "2026-11-15")!
+        let yesterdayKey = "2026-11-14"
+        let overnight = Presence(state: .studying, dayKey: yesterdayKey,
+                                 seconds: 9240, goalMinutes: 240,
+                                 updatedAt: bedtime.addingTimeInterval(-30))
+        let stillStudying = FriendActivity.resolve(overnight, now: bedtime, today: "2026-11-15")
+        check("전날 시작해 지금도 재면 공부 중", stillStudying.activity == .studying)
+        check("자정을 넘어도 전날 시작한 공부의 시간을 이어 준다", stillStudying.seconds == 9270)
+
+        let staleYesterday = FriendActivity.resolve(
+            overnight, now: bedtime.addingTimeInterval(61), today: "2026-11-15"
+        )
+        check("전날 공부의 갱신이 끊기면 오늘은 시작 전", staleYesterday.activity == .idle)
+        check("전날 공부가 끊기면 오늘은 0초로 보인다", staleYesterday.seconds == 0)
+
         let restedYesterday = Presence(state: .resting, dayKey: "2020-01-01",
                                        seconds: 3600, goalMinutes: 240, updatedAt: pNow)
         let r3 = FriendActivity.resolve(restedYesterday, now: pNow, today: pToday)
