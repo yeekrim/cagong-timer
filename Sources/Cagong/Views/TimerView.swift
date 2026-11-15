@@ -24,8 +24,8 @@ struct TimerView: View {
         // 카드(468)와 메모지(268)는 폭이 고정이라 나란히 두면 714가 필요하다.
         // 자리가 없을 때 겹치거나 잘리는 대신 세로로 쌓으면 468이면 된다.
         ViewThatFits(in: .horizontal) {
-            layout(stacked: false)
-            layout(stacked: true)
+            sideBySideLayout
+            stackedLayout
         }
         .confirmationDialog(
             store.isMeasuringPastDay ? "어제 기록을 마칠까요?" : "오늘 공부를 마칠까요?",
@@ -41,35 +41,38 @@ struct TimerView: View {
         }
     }
 
-    /// - Parameter stacked: 메모지를 카드 옆이 아니라 아래에 둘지.
-    private func layout(stacked: Bool) -> some View {
-        VStack(spacing: 0) {
-            Spacer(minLength: 8)
+    private var sideBySideLayout: some View {
+        HStack(alignment: .center, spacing: 0) {
+            mainCard
+            memo
+                .padding(.leading, -Self.memoOverlap)
+        }
+        // 날짜와 마무리 버튼에 같은 높이를 남겨 카드의 중앙을 유지한다.
+        .padding(.vertical, 52)
+        .overlay(alignment: .top) {
+            dateBar
+                .frame(width: Self.cardWidth)
+        }
+        .overlay(alignment: .bottom) {
+            endButton
+        }
+    }
 
+    private var stackedLayout: some View {
+        VStack(spacing: 0) {
             dateBar
                 .frame(width: Self.cardWidth)
                 .padding(.bottom, 12)
 
-            if stacked {
-                VStack(spacing: 16) {
-                    mainCard
-                    memo
-                }
-            } else {
-                HStack(alignment: .memoGap, spacing: 0) {
-                    mainCard
-                        .alignmentGuide(.memoGap) { $0[VerticalAlignment.center] }
-                    memo
-                        .padding(.leading, -Self.memoOverlap)
-                        .padding(.top, 34)
-                }
-            }
+            mainCard
+
+            memo
+                .padding(.top, 16)
 
             endButton
                 .padding(.top, 26)
-
-            Spacer(minLength: 8)
         }
+        .padding(.vertical, 8)
     }
 
     // MARK: 날짜 · 시각
@@ -274,7 +277,6 @@ struct TimerView: View {
     private var memo: some View {
         VStack(spacing: Self.memoSpacing) {
             todoSlip
-                .alignmentGuide(.memoGap) { $0[VerticalAlignment.bottom] + Self.memoSpacing / 2 }
             notepadSlip
                 .zIndex(1)
         }
@@ -319,14 +321,4 @@ struct TimerView: View {
             .buttonStyle(GhostButtonStyle(theme: theme))
             .help("그날 몫을 마무리합니다. 기록은 그대로 남고 다시 시작할 수 있어요")
     }
-}
-
-private extension VerticalAlignment {
-    enum MemoGap: AlignmentID {
-        static func defaultValue(in dimensions: ViewDimensions) -> CGFloat {
-            dimensions[VerticalAlignment.center]
-        }
-    }
-
-    static let memoGap = VerticalAlignment(MemoGap.self)
 }
