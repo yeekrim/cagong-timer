@@ -178,7 +178,6 @@ struct TimerView: View {
 
             HStack(alignment: .center, spacing: 22) {
                 DrinkGlass(
-                    running: store.isRunning,
                     theme: theme,
                     drink: store.drink,
                     side: 120

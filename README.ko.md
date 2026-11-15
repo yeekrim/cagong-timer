@@ -45,7 +45,6 @@
   스탠드 하나만 켠 `심야 스탠드`
 - **배경 사진** — 파리의 여름, 몽마르트 카페, 도쿄 노을, 센강의 밤. `⌘←` `⌘→`로 바꿀 수 있고, 내 사진도 추가할 수 있습니다
 - **음료 6종** — Espresso, Americano, Cafe Latte, Matcha Latte, Lemonade, Chocolate Frappuccino.
-  측정 중에는 따뜻한 음료에서 김이 올라와서, 숫자를 보지 않아도 상태를 알 수 있습니다
 
 ## 공들인 부분
 

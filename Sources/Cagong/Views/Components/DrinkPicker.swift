@@ -29,11 +29,9 @@ struct DrinkPicker: View {
         } label: {
             VStack(spacing: 8) {
                 DrinkGlass(
-                    running: false,
                     theme: theme,
                     drink: drink,
-                    side: 62,
-                    compact: true
+                    side: 62
                 )
 
                 Text(drink.name)
