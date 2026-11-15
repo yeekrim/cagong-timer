@@ -310,8 +310,8 @@ struct Presence: Codable, Sendable {
 
 /// 친구 탭에 실제로 그릴 상태. presence를 "보는 사람 기준"으로 해석한 결과다.
 ///
-/// - 재는 중인데 갱신이 끊긴 지 오래면 → 앱을 닫은 것이니 `away`
-/// - 마지막 활동이 어제였으면 → 오늘은 아직 `idle`
+/// - 오늘 기록을 재던 중 갱신이 오래 끊겼으면 → `away`
+/// - 지난 기록은 실제로 계속 재는 중일 때만 표시한다.
 enum FriendActivity: String {
     case studying, away, resting, finished, idle
 
@@ -328,7 +328,7 @@ enum FriendActivity: String {
     /// presence를 지금·오늘 기준으로 풀어, 화면에 쓸 상태와 시간을 낸다.
     ///
     /// 재는 중이면 마지막 갱신 이후 흐른 만큼을 더해 초를 이어 준다(대략 실시간).
-    /// 단 갱신이 `awayAfter`보다 오래 끊겼으면 이어주지 않고 `away`로 본다.
+    /// 갱신이 `awayAfter`보다 오래 끊겼으면 오늘 기록만 `away`로 본다.
     static func resolve(
         _ p: Presence?,
         now: Date = Date(),
@@ -339,7 +339,9 @@ enum FriendActivity: String {
 
         if p.state == .studying {
             let gap = now.timeIntervalSince(p.updatedAt)
-            if gap > awayAfter { return (.away, p.seconds) }
+            if gap > awayAfter {
+                return p.dayKey == today ? (.away, p.seconds) : (.idle, 0)
+            }
             return (.studying, p.seconds + max(0, gap))
         }
 
